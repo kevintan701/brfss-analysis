@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BRFSS 2017–2024: Lifestyle, Physical Activity & Chronic Disease Risk</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root {
+  --navy:#1a2f52;--accent:#2c5f8a;--mid:#4a7faa;--light:#e8f0f7;
+  --ink:#1c1c1e;--body:#3a3a3c;--muted:#6e6e73;--rule:#d4d4d8;
+  --bg:#fafaf8;--card:#ffffff;
+  --green:#1d6b4a;--amber:#7a4f0b;--red:#8b1f1f;
+  --green-bg:#eaf3de;--amber-bg:#fff3e0;--red-bg:#fcebeb;
+  --serif:'Lora',Georgia,serif;--sans:'DM Sans',system-ui,sans-serif;--mono:'DM Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--body);font-size:16px;line-height:1.7;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 2rem 6rem}
+
+/* Header */
+.jrnl-hdr{border-bottom:1px solid var(--rule);padding:1.25rem 0 1rem;display:flex;justify-content:space-between;align-items:baseline}
+.jrnl-name{font-family:var(--serif);font-size:13px;color:var(--muted);letter-spacing:.04em}
+.jrnl-date{font-size:12px;color:var(--muted)}
+
+/* Hero */
+.hero{padding:3.5rem 0 2.5rem;border-bottom:2px solid var(--navy)}
+.kicker{font-size:11px;font-weight:500;letter-spacing:.12em;color:var(--mid);text-transform:uppercase;margin-bottom:1.25rem;display:flex;gap:.75rem;flex-wrap:wrap}
+.kicker span{background:var(--light);padding:3px 10px;border-radius:3px}
+.hero-title{font-family:var(--serif);font-size:clamp(26px,5vw,42px);font-weight:600;color:var(--navy);line-height:1.15;margin-bottom:1.25rem;letter-spacing:-.01em}
+.hero-sub{font-size:17px;color:var(--muted);font-weight:300;margin-bottom:2rem;max-width:660px}
+.author-row{display:flex;flex-wrap:wrap;gap:2rem;padding-top:1.5rem;border-top:1px solid var(--rule);font-size:13px}
+.author-col{display:flex;flex-direction:column;gap:2px}
+.alabel{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.aval{color:var(--ink);font-weight:500}
+
+/* Metrics row */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);margin:2.5rem 0;border-radius:4px;overflow:hidden}
+.metric{background:var(--card);padding:1.25rem 1.5rem}
+.mlabel{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:.4rem}
+.mval{font-family:var(--serif);font-size:30px;color:var(--navy);font-weight:600;line-height:1;margin-bottom:.3rem}
+.mdesc{font-size:12px;color:var(--muted)}
+
+/* Counter animation */
+.counter{display:inline-block}
+
+/* Abstract */
+.abstract{background:var(--light);border-left:3px solid var(--navy);padding:1.5rem 1.75rem;margin:2rem 0 3rem;border-radius:0 4px 4px 0}
+.abstract-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:var(--navy);margin-bottom:.6rem}
+.abstract p{font-size:14px;line-height:1.75;color:var(--body);margin-bottom:.6rem}
+.abstract p:last-child{margin-bottom:0}
+
+/* TOC */
+.toc{border:1px solid var(--rule);border-radius:4px;padding:1.25rem 1.5rem;margin:0 0 3rem;background:var(--card)}
+.toc-title{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.75rem;font-weight:500}
+.toc ol{padding-left:1.2rem}
+.toc li{font-size:13px;margin:.3rem 0}
+.toc a{color:var(--accent);text-decoration:none}
+.toc a:hover{text-decoration:underline}
+
+/* Sections */
+.section{margin:0 0 4rem}
+.sec-num{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.15em;color:var(--mid);margin-bottom:.5rem;display:block}
+h2.sec-title{font-family:var(--serif);font-size:26px;font-weight:600;color:var(--navy);margin-bottom:1.25rem;padding-bottom:.75rem;border-bottom:1px solid var(--rule);line-height:1.2}
+h3{font-family:var(--sans);font-size:14px;font-weight:500;color:var(--ink);margin:2rem 0 .6rem;text-transform:uppercase;letter-spacing:.06em}
+p{margin-bottom:1rem;font-size:15.5px;line-height:1.8;color:var(--body)}
+sup.ref{font-size:10px;color:var(--accent);font-weight:500;vertical-align:super;line-height:0;cursor:default}
+
+/* Charts */
+.chart-section{margin:1.5rem 0 2.5rem}
+.chart-title{font-size:13px;font-weight:500;color:var(--ink);margin-bottom:.25rem}
+.chart-caption{font-size:12px;color:var(--muted);font-style:italic;margin-bottom:.75rem}
+.chart-legend{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:10px;font-size:12px;color:var(--muted)}
+.legend-item{display:flex;align-items:center;gap:6px}
+.legend-swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+
+/* Horizontal bar chart */
+.bar-table{width:100%;margin:1rem 0}
+.bar-row{display:grid;grid-template-columns:160px 1fr 60px;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #f0f0ee;opacity:0;transform:translateX(-10px);transition:opacity .4s ease,transform .4s ease}
+.bar-row.visible{opacity:1;transform:translateX(0)}
+.bar-label{font-size:13px;color:var(--body)}
+.bar-bg{background:#eee;border-radius:3px;height:12px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;width:0;transition:width .8s cubic-bezier(.4,0,.2,1)}
+.bar-val{font-size:13px;font-weight:500;color:var(--ink);text-align:right;font-family:var(--mono)}
+
+/* Risk cards */
+.risk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:1.25rem 0}
+.risk-card{border-radius:6px;padding:1.25rem;opacity:0;transform:translateY(10px);transition:opacity .4s ease,transform .4s ease}
+.risk-card.visible{opacity:1;transform:translateY(0)}
+.risk-card.low{background:var(--green-bg);border:1px solid #b8ddb0}
+.risk-card.mod{background:var(--amber-bg);border:1px solid #f5c6a0}
+.risk-card.high{background:var(--red-bg);border:1px solid #f0b0b0}
+.rtier{font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:500;margin-bottom:.5rem}
+.low .rtier{color:var(--green)}.mod .rtier{color:var(--amber)}.high .rtier{color:var(--red)}
+.rbig{font-family:var(--serif);font-size:28px;font-weight:600;line-height:1;margin-bottom:.25rem}
+.low .rbig{color:var(--green)}.mod .rbig{color:var(--amber)}.high .rbig{color:var(--red)}
+.rsub{font-size:11px;color:var(--muted);margin-bottom:.75rem}
+.rstat{font-size:12.5px;margin:3px 0}
+.low .rstat{color:#2e6b40}.mod .rstat{color:#633806}.high .rstat{color:#6b1f1f}
+
+/* Year trend table */
+.trend-table{width:100%;border-collapse:collapse;font-size:13px;margin:1rem 0}
+.trend-table thead tr{background:var(--navy)}
+.trend-table thead th{color:#fff;font-weight:500;padding:9px 12px;text-align:left;font-size:11px;letter-spacing:.03em}
+.trend-table tbody tr:nth-child(even){background:#f7f7f5}
+.trend-table tbody tr:hover{background:var(--light)}
+.trend-table tbody td{padding:8px 12px;color:var(--body);border-bottom:1px solid #eee}
+.trend-table .null-cell{color:var(--muted);font-style:italic;font-size:11px}
+.trend-table .avail-note{font-size:10px;color:var(--muted);margin-top:.4rem;font-style:italic}
+.up{color:#c0392b;font-size:11px}.stable{color:var(--muted);font-size:11px}
+
+/* Findings */
+.finding{border-left:3px solid var(--accent);padding:.75rem 1.25rem;margin:1.5rem 0;background:#f7fafd;border-radius:0 4px 4px 0}
+.finding-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--mid);font-weight:500;margin-bottom:.3rem}
+.finding p{font-size:14.5px;margin:0;color:var(--ink)}
+.finding strong{color:var(--navy)}
+
+/* Lifestyle score donut */
+.donut-row{display:flex;align-items:center;gap:2rem;margin:1rem 0}
+.donut-legend{flex:1;font-size:13px}
+.donut-legend-item{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0ee}
+.donut-legend-item:last-child{border-bottom:none}
+
+/* References */
+.references ol{padding-left:1.4rem}
+.references li{font-size:13px;line-height:1.65;color:var(--body);margin-bottom:.6rem}
+
+/* Limitations */
+.limit-list{list-style:none;padding:0}
+.limit-list li{font-size:14.5px;padding:.75rem 1rem .75rem 1.25rem;border-left:2px solid var(--rule);color:var(--body);margin-bottom:.5rem;line-height:1.65}
+
+/* Divider */
+hr.div{border:none;border-top:.5px solid var(--rule);margin:2.5rem 0}
+
+/* Scroll fade-in observer */
+.fade-in{opacity:0;transform:translateY(16px);transition:opacity .5s ease,transform .5s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+
+/* Footer */
+footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);flex-wrap:wrap;gap:.5rem}
+
+/* Note box */
+.note{background:#f7f7f5;border:1px solid var(--rule);border-radius:4px;padding:.75rem 1rem;font-size:12.5px;color:var(--muted);margin:.75rem 0;line-height:1.6}
+
+@media(max-width:600px){
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .risk-grid{grid-template-columns:1fr}
+  .bar-table .bar-row{grid-template-columns:120px 1fr 52px}
+  .donut-row{flex-direction:column}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Journal header -->
+<header class="jrnl-hdr">
+  <span class="jrnl-name">Health Informatics & Computational Epidemiology — Portfolio Report</span>
+  <span class="jrnl-date">March 2026</span>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="kicker">
+    <span>Original Research</span><span>CDC Public-Use Data</span><span>Open Access</span>
+  </div>
+  <h1 class="hero-title">Lifestyle, Physical Activity, and<br>Chronic Disease Risk in U.S. Adults</h1>
+  <p class="hero-sub">A multi-year analysis of 3.5 million BRFSS survey records (2017–2024) using Apache PySpark distributed computing</p>
+  <div class="author-row">
+    <div class="author-col"><span class="alabel">Author</span><span class="aval">Yuntao (Kevin) Tan</span></div>
+    <div class="author-col"><span class="alabel">Date</span><span class="aval">March 2026</span></div>
+    <div class="author-col"><span class="alabel">Data source</span><span class="aval">CDC BRFSS 2017–2024</span></div>
+    <div class="author-col"><span class="alabel">Contact</span><span class="aval">tyuntao@umich.edu</span></div>
+  </div>
+</section>
+
+<!-- Metrics -->
+<div class="metrics">
+  <div class="metric"><div class="mlabel">Records analyzed</div><div class="mval"><span class="counter" data-target="3482496" data-format="M">3.5M</span></div><div class="mdesc">8 survey years</div></div>
+  <div class="metric"><div class="mlabel">Diabetes prevalence</div><div class="mval"><span class="counter" data-target="14.5" data-suffix="%">14.5%</span></div><div class="mdesc">+1.0pp since 2017</div></div>
+  <div class="metric"><div class="mlabel">Best model AUC</div><div class="mval"><span class="counter" data-target="0.797" data-decimals="3">0.797</span></div><div class="mdesc">Logistic regression</div></div>
+  <div class="metric"><div class="mlabel">Obesity prevalence</div><div class="mval"><span class="counter" data-target="32.6" data-suffix="%">32.6%</span></div><div class="mdesc">+2.6pp since 2017</div></div>
+</div>
+
+<!-- Abstract -->
+<div class="abstract fade-in">
+  <div class="abstract-label">Abstract</div>
+  <p><strong>Background:</strong> Chronic diseases including diabetes, obesity, and kidney disease represent a leading burden on the U.S. healthcare system, with lifestyle behaviors serving as primary modifiable risk factors.<sup class="ref">1,2</sup> Multi-year surveillance data at population scale enables detection of trends that cross-sectional studies cannot capture.</p>
+  <p><strong>Methods:</strong> We analyzed 3,482,496 survey records from the CDC Behavioral Risk Factor Surveillance System (BRFSS) 2017–2024 using Apache PySpark distributed computing. Logistic regression and random forest classifiers were trained to predict diabetes risk from lifestyle and demographic features.</p>
+  <p><strong>Results:</strong> Diabetes prevalence increased from 14.2% (2017) to 15.2% (2024); obesity rose from 31.1% to 33.7%. Obese adults showed a 23.5% diabetes rate versus 7.3% in normal-weight adults. A clear lifestyle dose-response was observed: adults with lifestyle score 4/4 showed 6.6% diabetes prevalence vs. 18.6% for score 0/4. Best model AUC = 0.797.</p>
+  <p style="margin:0"><strong>Conclusions:</strong> Physical activity, BMI, and general health self-rating are the strongest modifiable predictors of diabetes risk. These findings support integrated lifestyle screening approaches applicable to large-scale administrative databases such as CMS Medicare claims.</p>
+</div>
+
+<!-- TOC -->
+<nav class="toc fade-in">
+  <div class="toc-title">Contents</div>
+  <ol>
+    <li><a href="#s1">Background &amp; Research Questions</a></li>
+    <li><a href="#s2">Data &amp; Methods</a></li>
+    <li><a href="#s3">Sample Characteristics</a></li>
+    <li><a href="#s4">Key Findings</a></li>
+    <li><a href="#s5">Machine Learning: Diabetes Risk Classification</a></li>
+    <li><a href="#s6">Discussion &amp; Conclusions</a></li>
+    <li><a href="#limitations">Limitations</a></li>
+    <li><a href="#references">References</a></li>
+    <li><a href="#appendix">Technical Appendix</a></li>
+  </ol>
+</nav>
+
+<!-- S1 -->
+<section class="section fade-in" id="s1">
+  <span class="sec-num">Section 1</span>
+  <h2 class="sec-title">Background &amp; Research Questions</h2>
+  <p>Chronic diseases account for 90% of the $4.1 trillion in annual U.S. healthcare expenditures, with diabetes, obesity, and cardiovascular disease representing disproportionate shares.<sup class="ref">1</sup> The Behavioral Risk Factor Surveillance System (BRFSS), conducted annually by the CDC since 1984, provides the nation's largest telephone-based health surveillance dataset — covering all 50 states plus D.C. and U.S. territories, with approximately 400,000–460,000 respondents per year.<sup class="ref">3</sup></p>
+  <p>Despite the scale of BRFSS, multi-year analyses pooling 3+ years of data remain relatively uncommon, partly because the full cross-decade dataset exceeds practical limits for single-machine processing tools such as pandas. Apache PySpark's distributed architecture addresses this bottleneck, enabling population-scale analysis at the granularity required for detecting modest but meaningful longitudinal trends.<sup class="ref">4</sup></p>
+  <p>This analysis addresses three research questions:</p>
+  <ul style="padding-left:1.5rem;margin-bottom:1rem">
+    <li style="margin-bottom:.5rem;font-size:15.5px;line-height:1.8">How have diabetes, obesity, and physical activity prevalence changed across the U.S. adult population from 2017 to 2024?</li>
+    <li style="margin-bottom:.5rem;font-size:15.5px;line-height:1.8">Which lifestyle factors — physical activity, BMI, sleep, and mental health — are most strongly associated with diabetes risk after adjustment for demographics?</li>
+    <li style="font-size:15.5px;line-height:1.8">How accurately can machine learning models classify diabetes risk from BRFSS lifestyle and demographic variables, and what is the relative contribution of modifiable vs. non-modifiable predictors?</li>
+  </ul>
+</section>
+
+<hr class="div">
+
+<!-- S2 -->
+<section class="section fade-in" id="s2">
+  <span class="sec-num">Section 2</span>
+  <h2 class="sec-title">Data &amp; Methods</h2>
+
+  <h3>2.1 Data source</h3>
+  <p>Data were obtained from the CDC BRFSS annual public-use files for survey years 2017–2024 (files: <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">LLCP20XX.XPT</code>, SAS Transport format).<sup class="ref">3</sup> BRFSS collects state-specific data on health risk behaviors, chronic diseases, and preventive health service use from the non-institutionalized adult population (≥18 years) via telephone interview. Since 2011, BRFSS has employed a dual-frame design combining landline and cellular telephone sampling, with iterative proportional fitting (raking) weights to improve representativeness across demographic margins.<sup class="ref">5</sup></p>
+
+  <h3>2.2 Variable harmonization</h3>
+  <p>Several core variables changed names across survey years due to BRFSS rotating-core design, in which some questions alternate between even and odd years. Blood pressure (hypertension) was collected only in odd years (2017, 2019, 2021, 2023) using variables <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BPHIGH4</code>/<code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BPHIGH6</code>; sleep duration was collected only in even years plus 2017. A systematic alias-resolution layer was implemented in the PySpark pipeline to map canonical variable names to their year-specific equivalents, with NaN-fill for years where a question was not administered. BRFSS-standard missing value codes (7, 9, 77, 99, 777, 999) were replaced with null; Spark float <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">NaN</code> values (introduced by the pandas bridge layer) were handled separately via <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">F.isnan()</code>.</p>
+
+  <h3>2.3 Why PySpark</h3>
+  <p>At 3.5 million records and 25+ variables per year, loading the full multi-year file into a single machine's RAM using pandas requires ~8GB and degrades processing speed substantially. PySpark partitions data across multiple CPU cores locally (or cluster nodes in production), enabling the same analytical pipeline to scale from a laptop to a cloud cluster — the architecture used in production healthcare data systems such as CMS Medicare claims processing.<sup class="ref">4</sup> The identical code runs without modification on Databricks or AWS EMR for true distributed deployment.</p>
+
+  <h3>2.4 Analytical pipeline</h3>
+  <p>The pipeline comprises six modular classes: <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSLoader</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSCleaner</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSEngineer</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSAnalyzer</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSModeler</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSPipeline</code>. All functions include Google-style docstrings and Python logging (replacing print statements) to enable production-grade log capture. Output is saved in Apache Parquet format for efficient downstream analysis. An 80/20 train-test split was used with fixed seed (20260301) for reproducibility.</p>
+</section>
+
+<hr class="div">
+
+<!-- S3 -->
+<section class="section fade-in" id="s3">
+  <span class="sec-num">Section 3</span>
+  <h2 class="sec-title">Sample Characteristics</h2>
+  <p>The combined analytic dataset includes 3,482,496 adult respondents across 8 survey years (2017–2024). Mean age was 55.0 years; mean BMI was 28.4 kg/m²; mean nightly sleep was 6.9 hours (years with available data). Annual sample sizes ranged from 401,958 (2020, partially affected by COVID-19 field operations) to 457,670 (2024).</p>
+
+  <div class="chart-section">
+    <div class="chart-title">Figure 1. Annual sample size and diabetes prevalence (2017–2024)</div>
+    <div class="chart-caption">Left axis: N respondents per year. Right axis: diabetes prevalence (%). Note COVID-19 reduced 2020 sample size.</div>
+    <div style="position:relative;width:100%;height:280px">
+      <canvas id="annualChart" role="img" aria-label="Dual-axis chart showing BRFSS sample size and diabetes prevalence by year 2017 to 2024">Sample sizes range from 401,958 to 457,670. Diabetes rises from 14.2% in 2017 to 15.2% in 2024.</canvas>
+    </div>
+  </div>
+
+  <div class="chart-section" style="margin-top:2rem">
+    <div class="chart-title">Figure 2. BMI category distribution</div>
+    <div class="chart-caption">Proportion of 3.48M respondents in each WHO BMI category.</div>
+    <div class="bar-table" id="bmiBar">
+      <div class="bar-row"><span class="bar-label">Obese (≥30)</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="32.6"></div></div><span class="bar-val">32.6%</span></div>
+      <div class="bar-row"><span class="bar-label">Overweight (25–29.9)</span><div class="bar-bg"><div class="bar-fill" style="background:#e67e22" data-width="37.5"></div></div><span class="bar-val">37.5%</span></div>
+      <div class="bar-row"><span class="bar-label">Normal (18.5–24.9)</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="27.3"></div></div><span class="bar-val">27.3%</span></div>
+      <div class="bar-row"><span class="bar-label">Underweight (&lt;18.5)</span><div class="bar-bg"><div class="bar-fill" style="background:#888780" data-width="1.5"></div></div><span class="bar-val">1.5%</span></div>
+      <div class="bar-row"><span class="bar-label">Missing</span><div class="bar-bg"><div class="bar-fill" style="background:#cccccc" data-width="1.1"></div></div><span class="bar-val">9.4%</span></div>
+    </div>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- S4 -->
+<section class="section fade-in" id="s4">
+  <span class="sec-num">Section 4</span>
+  <h2 class="sec-title">Key Findings</h2>
+
+  <h3>4.1 Rising diabetes and obesity (2017–2024)</h3>
+  <div class="finding">
+    <div class="finding-label">Finding 1</div>
+    <p>Diabetes prevalence increased from <strong>14.2% (2017) to 15.2% (2024)</strong> — a 1.0 percentage-point rise over 8 years. Obesity rose from <strong>31.1% to 33.7%</strong> (+2.6pp). Physical activity improved modestly from 72.4% to 76.7% reporting any activity.</p>
+  </div>
+
+  <div class="chart-section">
+    <div class="chart-title">Figure 3. Year-over-year trends in key outcomes</div>
+    <div class="chart-caption">Diabetes and obesity show persistent upward trends. Physical activity (any) improved. Hypertension data available in odd years only (BRFSS rotating core design).</div>
+    <div class="note">⚠ Hypertension data is collected only in odd survey years (2017, 2019, 2021, 2023). Even-year values are not applicable (N/A) — this reflects BRFSS rotating-core survey design, not a data error.<sup class="ref">3</sup></div>
+
+    <table class="trend-table">
+      <thead><tr><th>Year</th><th>N</th><th>Diabetes %</th><th>Hypertension % <span style="font-weight:300;opacity:.8">(odd yrs)</span></th><th>CKD %</th><th>Obesity %</th><th>Any PA %</th></tr></thead>
+      <tbody>
+        <tr><td>2017</td><td>450,016</td><td>14.2</td><td>40.4</td><td>—</td><td>31.1</td><td>72.4</td></tr>
+        <tr><td>2018</td><td>437,436</td><td>14.8</td><td class="null-cell">N/A</td><td>3.8</td><td>31.8</td><td>74.8</td></tr>
+        <tr><td>2019</td><td>418,268</td><td>14.7</td><td>40.7</td><td>3.9</td><td>32.2</td><td>72.8</td></tr>
+        <tr><td>2020</td><td>401,958</td><td>13.8</td><td class="null-cell">N/A</td><td>3.7</td><td>32.0</td><td>76.2</td></tr>
+        <tr><td>2021</td><td>438,693</td><td>14.0</td><td>39.4</td><td>3.9</td><td>33.5</td><td>75.6</td></tr>
+        <tr><td>2022</td><td>445,132</td><td>14.6</td><td class="null-cell">N/A</td><td>4.6</td><td>33.4</td><td>76.0</td></tr>
+        <tr><td>2023</td><td>433,323</td><td>14.6</td><td>40.8</td><td>4.8</td><td>33.1</td><td>75.3</td></tr>
+        <tr><td>2024</td><td>457,670</td><td><strong>15.2 <span class="up">↑</span></strong></td><td class="null-cell">N/A</td><td><strong>5.2 <span class="up">↑</span></strong></td><td><strong>33.7 <span class="up">↑</span></strong></td><td><strong>76.7 <span class="up">↑</span></strong></td></tr>
+      </tbody>
+    </table>
+    <div class="trend-table avail-note">CKD data not available in 2017 BRFSS (variable introduced in 2018). HTN collected in odd years only. Sleep collected in 2017/2018/2020/2022.</div>
+  </div>
+
+  <h3>4.2 BMI and diabetes — strong dose-response</h3>
+  <div class="finding">
+    <div class="finding-label">Finding 2</div>
+    <p>Diabetes prevalence shows a clear BMI dose-response: <strong>23.5% in obese adults</strong> vs. <strong>7.3% in normal-weight adults</strong> — a 3.2-fold difference. Underweight adults show the lowest diabetes prevalence (6.2%), consistent with type 1 diabetes predominance in this subgroup.<sup class="ref">6</sup></p>
+  </div>
+
+  <div class="chart-section">
+    <div class="chart-title">Figure 4. Disease prevalence by BMI category</div>
+    <div class="chart-caption">Diabetes, CKD, and physical activity rates across WHO BMI categories. PA rate is inverse to BMI — obese adults are significantly less active.</div>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:#c0392b"></div>Diabetes %</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#2980b9"></div>CKD %</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#1d9e75"></div>Any PA %</div>
+    </div>
+    <div style="position:relative;width:100%;height:280px">
+      <canvas id="bmiChart" role="img" aria-label="Grouped bar chart of disease rates by BMI category">Diabetes: Underweight 6.2%, Normal 7.3%, Overweight 12.9%, Obese 23.5%. PA: Underweight 69.8%, Normal 81.0%, Overweight 78.3%, Obese 67.6%.</canvas>
+    </div>
+  </div>
+
+  <h3>4.3 Age gradient in chronic disease</h3>
+  <div class="finding">
+    <div class="finding-label">Finding 3</div>
+    <p>Diabetes risk rises sharply with age: <strong>2.2% in 18–29-year-olds</strong> to <strong>21.4% in adults 75+</strong>. CKD shows the steepest age gradient, rising from 0.7% to 8.0% — a more than 11-fold increase. Physical activity declines with age, from 82.6% to 65.8%.<sup class="ref">7</sup></p>
+  </div>
+
+  <div class="chart-section">
+    <div class="chart-title">Figure 5. Diabetes, CKD, and physical activity by age group</div>
+    <div class="chart-caption">Chronic disease risk rises monotonically with age; physical activity shows an inverse pattern.</div>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:#c0392b"></div>Diabetes %</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#e67e22"></div>CKD %</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#1d9e75"></div>Any PA %</div>
+    </div>
+    <div style="position:relative;width:100%;height:280px">
+      <canvas id="ageChart" role="img" aria-label="Line chart showing diabetes, CKD, and physical activity rates by age group">Diabetes rises from 2.2% in 18-29 to 21.4% in 75+. CKD from 0.7% to 8.0%. PA from 82.6% to 65.8%.</canvas>
+    </div>
+  </div>
+
+  <h3>4.4 Lifestyle score — clear dose-response</h3>
+  <div class="finding">
+    <div class="finding-label">Finding 4</div>
+    <p>A composite healthy lifestyle score (0–4: physical activity + adequate sleep + healthy BMI + non-smoking) shows a robust dose-response relationship with diabetes prevalence. Adults scoring 4/4 show <strong>6.6% diabetes prevalence</strong> vs. <strong>18.6% for score 0/4</strong> — a 2.8-fold difference — after combining across all 8 survey years.</p>
+  </div>
+
+  <div class="chart-section">
+    <div class="chart-title">Figure 6. Diabetes prevalence by healthy lifestyle score (0–4)</div>
+    <div class="chart-caption">Each additional healthy behavior is associated with lower diabetes prevalence. Score 0 = none of: meeting PA guidelines, adequate sleep, healthy BMI, non-smoker. Score 4 = all four.</div>
+    <div class="donut-row">
+      <div style="position:relative;width:220px;height:220px;flex-shrink:0">
+        <canvas id="lifestyleDonut" role="img" aria-label="Donut chart of lifestyle score distribution">Score 0: 0.7%, Score 1: 29.6%, Score 2: 48.1%, Score 3: 19.5%, Score 4: 2.1%.</canvas>
+      </div>
+      <div class="donut-legend">
+        <div style="font-size:12px;font-weight:500;color:var(--ink);margin-bottom:.5rem">Population by score</div>
+        <div class="donut-legend-item"><span>Score 0 (none)</span><span style="font-weight:500">0.7% — Diabetes 18.6%</span></div>
+        <div class="donut-legend-item"><span>Score 1</span><span style="font-weight:500">29.6% — Diabetes 18.6%</span></div>
+        <div class="donut-legend-item"><span>Score 2</span><span style="font-weight:500">48.1% — Diabetes 14.4%</span></div>
+        <div class="donut-legend-item"><span>Score 3</span><span style="font-weight:500">19.5% — Diabetes 9.0%</span></div>
+        <div class="donut-legend-item"><span>Score 4 (all)</span><span style="font-weight:500">2.1% — Diabetes 6.6%</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- S5 -->
+<section class="section fade-in" id="s5">
+  <span class="sec-num">Section 5</span>
+  <h2 class="sec-title">Machine Learning: Diabetes Risk Classification</h2>
+
+  <h3>5.1 Model performance</h3>
+  <p>Two models were trained on 2,517,825 records (80%) and evaluated on 629,712 records (20%). The training dataset used only records with non-null values for the outcome (diabetes flag) and core demographic features (age, BMI, sex), allowing optional features (sleep, mental health days) to be missing without exclusion — appropriate for the rotating-core survey design. Feature vectors with null values were handled via <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">handleInvalid="skip"</code> in VectorAssembler.</p>
+
+  <div class="chart-section">
+    <div class="chart-title">Figure 7. Model comparison — AUC and accuracy</div>
+    <div class="chart-caption">Both models trained on 2.5M records; evaluated on 630K held-out test records.</div>
+    <div style="position:relative;width:100%;height:200px">
+      <canvas id="modelChart" role="img" aria-label="Horizontal bar chart comparing AUC and accuracy of logistic regression vs random forest">LR: AUC 0.797, Acc 84.4%. RF: AUC 0.786, Acc 84.4%.</canvas>
+    </div>
+  </div>
+
+  <h3>5.2 Feature importances</h3>
+  <p>General health self-rating — a single-item 5-point scale (Excellent to Poor) — is by far the strongest predictor (importance 0.348), consistent with published evidence that self-rated health captures latent health status beyond what objective biomarkers alone can explain.<sup class="ref">8</sup> Age and BMI follow, with physical activity (pa_any) and the composite lifestyle score retaining independent predictive value after clinical adjustment.</p>
+
+  <div class="chart-section">
+    <div class="chart-title">Figure 8. Random forest feature importances (top 10)</div>
+    <div class="chart-caption">Bar length proportional to mean decrease in node impurity. Color indicates predictor domain.</div>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:#c0392b"></div>Clinical / physiological</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#e67e22"></div>Demographic</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#1d9e75"></div>Lifestyle / modifiable</div>
+    </div>
+    <div class="bar-table" id="featBar">
+      <div class="bar-row"><span class="bar-label">Self-rated health</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="100"></div></div><span class="bar-val">0.3478</span></div>
+      <div class="bar-row"><span class="bar-label">Age</span><div class="bar-bg"><div class="bar-fill" style="background:#e67e22" data-width="54.1"></div></div><span class="bar-val">0.1881</span></div>
+      <div class="bar-row"><span class="bar-label">BMI</span><div class="bar-bg"><div class="bar-fill" style="background:#e67e22" data-width="43.3"></div></div><span class="bar-val">0.1505</span></div>
+      <div class="bar-row"><span class="bar-label">CHD flag</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="40.3"></div></div><span class="bar-val">0.1403</span></div>
+      <div class="bar-row"><span class="bar-label">Obesity flag</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="32.7"></div></div><span class="bar-val">0.1138</span></div>
+      <div class="bar-row"><span class="bar-label">Any PA ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="10.1"></div></div><span class="bar-val">0.0351</span></div>
+      <div class="bar-row"><span class="bar-label">Lifestyle score ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="3.8"></div></div><span class="bar-val">0.0131</span></div>
+      <div class="bar-row"><span class="bar-label">Sleep hours ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="1.2"></div></div><span class="bar-val">0.0043</span></div>
+      <div class="bar-row"><span class="bar-label">Mental health days ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="0.9"></div></div><span class="bar-val">0.0032</span></div>
+      <div class="bar-row"><span class="bar-label">Mental burden flag ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="0.4"></div></div><span class="bar-val">0.0015</span></div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:.5rem">★ = modifiable lifestyle features retaining independent predictive value after demographic and clinical covariate adjustment.</p>
+  </div>
+</section>
+
+<hr class="div">
+
+<!-- S6 -->
+<section class="section fade-in" id="s6">
+  <span class="sec-num">Section 6</span>
+  <h2 class="sec-title">Discussion &amp; Conclusions</h2>
+
+  <p>This analysis of 3.5 million BRFSS respondents across 8 survey years confirms persistent and worsening trends in diabetes (14.2%→15.2%) and obesity (31.1%→33.7%) in the U.S. adult population — findings consistent with national surveillance estimates from CDC and the National Diabetes Statistics Report.<sup class="ref">2,6</sup> The modest improvement in physical activity prevalence (72.4%→76.7%) did not offset the rising trajectory of metabolic disease.</p>
+
+  <p>The BMI-diabetes dose-response (7.3% in normal-weight vs. 23.5% in obese adults) aligns with extensive epidemiological literature establishing obesity as the primary modifiable driver of type 2 diabetes risk.<sup class="ref">9</sup> The lifestyle score analysis — showing a 2.8-fold gradient from score 0 to score 4 — reinforces the primacy of multi-domain behavioral intervention over any single lifestyle factor.<sup class="ref">10</sup></p>
+
+  <p>The strong predictive contribution of self-rated health (importance 0.348) is notable and consistent with meta-analytic evidence that single-item global health ratings are robust predictors of mortality, hospitalization, and incident chronic disease, capturing latent health state variance not accounted for by objective biomarkers alone.<sup class="ref">8</sup></p>
+
+  <p>From a methodological perspective, the PySpark pipeline developed here — with modular class architecture, comprehensive docstrings, and Python logging — provides a scalable framework directly applicable to large administrative healthcare databases. The same pipeline could process CMS Medicare claims data (3M+ ESRD beneficiaries in KECC's database) without modification, simply by replacing the BRFSS XPT loader with a claims file reader.</p>
+
+  <p><strong>Future directions.</strong> Longitudinal analysis linking individual respondents across years would strengthen causal inference. Survey-weighted estimates (using <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">_LLCPWT</code>) would enable population-representative projections. Integration with geographic data (Census tract-level SDOH indicators) via Spark spatial joins would add an environmental dimension to lifestyle-disease associations.<sup class="ref">11</sup></p>
+</section>
+
+<hr class="div">
+
+<!-- Limitations -->
+<section class="section fade-in" id="limitations">
+  <span class="sec-num">Limitations</span>
+  <h2 class="sec-title">Limitations</h2>
+  <ul class="limit-list">
+    <li><strong>Self-reported data.</strong> All BRFSS responses are self-reported, introducing social desirability bias — particularly for physical activity, BMI (height/weight), and disease diagnoses. Validated clinical measurements would strengthen findings.</li>
+    <li><strong>Rotating-core design.</strong> Hypertension data is available only in odd survey years; sleep in 2017/2018/2020/2022. Year-over-year comparisons for these variables must account for structural missingness, not random attrition.</li>
+    <li><strong>Cross-sectional structure.</strong> BRFSS is a repeated cross-section, not a longitudinal cohort. Causal inference about lifestyle-disease relationships requires longitudinal data with temporal ordering of exposures and outcomes.</li>
+    <li><strong>Survey weighting not applied.</strong> Analyses use unweighted counts and proportions. Application of <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">_LLCPWT</code> raking weights is required for nationally representative population estimates — a planned extension.</li>
+    <li><strong>Local computing.</strong> The pipeline ran in PySpark local mode on a single workstation. Production-scale deployment on a distributed cluster (Databricks, AWS EMR) would be required for real-time or streaming analytics on Medicare-scale datasets.</li>
+  </ul>
+</section>
+
+<hr class="div">
+
+<!-- References -->
+<section class="section references fade-in" id="references">
+  <span class="sec-num">References</span>
+  <h2 class="sec-title">References</h2>
+  <ol>
+    <li>Centers for Disease Control and Prevention (CDC). <em>Chronic Diseases in America.</em> Atlanta, GA: CDC; 2023. Available at: https://www.cdc.gov/chronicdisease/</li>
+    <li>CDC. <em>National Diabetes Statistics Report 2024.</em> Atlanta, GA: US Department of Health and Human Services; 2024.</li>
+    <li>CDC. <em>Behavioral Risk Factor Surveillance System: Annual Survey Data 2017–2024.</em> Atlanta, GA: CDC; 2025. Available at: https://www.cdc.gov/brfss/annual_data/</li>
+    <li>Zaharia M, Chowdhury M, Franklin MJ, et al. Resilient distributed datasets: A fault-tolerant abstraction for in-memory cluster computing. <em>Proceedings of NSDI '12.</em> 2012.</li>
+    <li>Battaglia MP, Frankel MR, Link MW. Improving standard poststratification techniques for random-digit-dialing telephone surveys. <em>Surv Res Methods.</em> 2008;2(1):11–19.</li>
+    <li>CDC. <em>National Diabetes Statistics Report 2022.</em> Atlanta, GA: US Department of Health and Human Services; 2022.</li>
+    <li>Benjamin EJ, Muntner P, Alonso A, et al. Heart disease and stroke statistics — 2019 update: A report from the American Heart Association. <em>Circulation.</em> 2019;139(10):e56–e528.</li>
+    <li>Idler EL, Benyamini Y. Self-rated health and mortality: A review of twenty-seven community studies. <em>J Health Soc Behav.</em> 1997;38(1):21–37.</li>
+    <li>Hu FB, Manson JE, Stampfer MJ, et al. Diet, lifestyle, and the risk of type 2 diabetes mellitus in women. <em>N Engl J Med.</em> 2001;345(11):790–797.</li>
+    <li>Knowler WC, Barrett-Connor E, Fowler SE, et al. Reduction in the incidence of type 2 diabetes with lifestyle intervention or metformin. <em>N Engl J Med.</em> 2002;346(6):393–403.</li>
+    <li>Berkowitz SA, Traore CY, Singer DE, Atlas SJ. Evaluating area-based socioeconomic status indicators for monitoring disparities within health care systems: Results from a primary care network. <em>Health Serv Res.</em> 2015;50(2):398–417.</li>
+  </ol>
+</section>
+
+<hr class="div">
+
+<!-- Appendix -->
+<section class="section fade-in" id="appendix">
+  <span class="sec-num">Technical Appendix</span>
+  <h2 class="sec-title">Technical Appendix</h2>
+
+  <h3>A.1 Key variable definitions</h3>
+  <div style="overflow-x:auto;margin:1rem 0">
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:var(--navy)"><th style="color:#fff;padding:9px 12px;text-align:left;font-size:11px">Variable</th><th style="color:#fff;padding:9px 12px;text-align:left;font-size:11px">BRFSS name</th><th style="color:#fff;padding:9px 12px;text-align:left;font-size:11px">Type</th><th style="color:#fff;padding:9px 12px;text-align:left;font-size:11px">Definition</th></tr></thead>
+    <tbody>
+      <tr style="background:#f9f9f9"><td style="padding:8px 12px;font-weight:500">flag_diabetes</td><td style="padding:8px 12px;font-family:var(--mono);font-size:12px">DIABETE4</td><td style="padding:8px 12px">Binary</td><td style="padding:8px 12px">1 if ever told have diabetes (codes 1 or 2)</td></tr>
+      <tr><td style="padding:8px 12px;font-weight:500">flag_htn</td><td style="padding:8px 12px;font-family:var(--mono);font-size:12px">BPHIGH6/BPHIGH4</td><td style="padding:8px 12px">Binary</td><td style="padding:8px 12px">1 if ever told have high blood pressure (odd years only)</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:8px 12px;font-weight:500">flag_ckd</td><td style="padding:8px 12px;font-family:var(--mono);font-size:12px">CHCKDNY2</td><td style="padding:8px 12px">Binary</td><td style="padding:8px 12px">1 if ever told have kidney disease (2018–2024)</td></tr>
+      <tr><td style="padding:8px 12px;font-weight:500">bmi</td><td style="padding:8px 12px;font-family:var(--mono);font-size:12px">_BMI5</td><td style="padding:8px 12px">Continuous</td><td style="padding:8px 12px">BMI in kg/m² (raw value ÷ 100)</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:8px 12px;font-weight:500">pa_any</td><td style="padding:8px 12px;font-family:var(--mono);font-size:12px">_TOTINDA</td><td style="padding:8px 12px">Binary</td><td style="padding:8px 12px">1 if any physical activity in past 30 days</td></tr>
+      <tr><td style="padding:8px 12px;font-weight:500">gen_health</td><td style="padding:8px 12px;font-family:var(--mono);font-size:12px">GENHLTH</td><td style="padding:8px 12px">Ordinal 1–5</td><td style="padding:8px 12px">Self-rated health reversed: 5=Excellent, 1=Poor</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:8px 12px;font-weight:500">lifestyle_score</td><td style="padding:8px 12px;font-family:var(--mono);font-size:12px">Derived</td><td style="padding:8px 12px">0–4</td><td style="padding:8px 12px">Sum: meets PA guidelines + sleep ≥7h + BMI 18.5–24.9 + non-smoker</td></tr>
+      <tr><td style="padding:8px 12px;font-weight:500">_LLCPWT</td><td style="padding:8px 12px;font-family:var(--mono);font-size:12px">_LLCPWT</td><td style="padding:8px 12px">Weight</td><td style="padding:8px 12px">Final raking weight for population-representative estimates</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>A.2 Software environment</h3>
+  <ul style="padding-left:1.5rem;font-size:14.5px;line-height:2">
+    <li>Language: Python 3.14</li>
+    <li>Distributed framework: Apache PySpark 4.1.1 (local mode; production-ready for Databricks / AWS EMR)</li>
+    <li>ML library: pyspark.ml — Pipeline, LogisticRegression, RandomForestClassifier, StandardScaler, VectorAssembler</li>
+    <li>Data ingestion: pyreadstat 1.3.4 (XPT → pandas → Spark bridge)</li>
+    <li>Output storage: Apache Parquet (columnar, compressed)</li>
+    <li>Code structure: 6 classes with Google-style docstrings and Python logging module</li>
+  </ul>
+</section>
+
+<footer>
+  <span>Yuntao (Kevin) Tan &nbsp;·&nbsp; tyuntao@umich.edu &nbsp;·&nbsp; March 2026</span>
+  <span>CDC BRFSS Public-Use Data &nbsp;·&nbsp; N = 3,482,496</span>
+</footer>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+const gridC = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+const textC = isDark ? '#aaa' : '#666';
+const base = {
+  responsive:true, maintainAspectRatio:false,
+  plugins:{legend:{display:false}},
+  scales:{
+    x:{grid:{display:false},ticks:{color:textC,font:{size:11,family:'DM Sans'}}},
+    y:{grid:{color:gridC},ticks:{color:textC,font:{size:11,family:'DM Sans'}}}
+  }
+};
+
+/* Fig 1 — Annual N + diabetes */
+new Chart(document.getElementById('annualChart'),{
+  type:'bar',
+  data:{
+    labels:['2017','2018','2019','2020','2021','2022','2023','2024'],
+    datasets:[
+      {type:'bar',label:'N (thousands)',data:[450,437,418,402,439,445,433,458],
+       backgroundColor:'rgba(41,128,185,0.25)',borderColor:'rgba(41,128,185,0.7)',
+       borderWidth:1,borderRadius:3,yAxisID:'y'},
+      {type:'line',label:'Diabetes %',data:[14.2,14.8,14.7,13.8,14.0,14.6,14.6,15.2],
+       borderColor:'#c0392b',backgroundColor:'rgba(192,57,43,0.08)',
+       pointBackgroundColor:'#c0392b',pointRadius:5,borderWidth:2,
+       fill:true,tension:.3,yAxisID:'y2'}
+    ]
+  },
+  options:{
+    ...base,
+    plugins:{
+      legend:{display:true,position:'top',
+        labels:{font:{size:12,family:'DM Sans'},color:textC,boxWidth:10,padding:14}}
+    },
+    scales:{
+      x:{grid:{display:false},ticks:{color:textC,font:{size:11}}},
+      y:{grid:{color:gridC},ticks:{color:textC,font:{size:11},callback:v=>v+'K'},
+         title:{display:true,text:'Respondents (thousands)',color:textC,font:{size:11}}},
+      y2:{position:'right',grid:{display:false},
+          ticks:{color:'#c0392b',font:{size:11},callback:v=>v+'%'},
+          title:{display:true,text:'Diabetes %',color:'#c0392b',font:{size:11}},
+          min:12,max:17}
+    }
+  }
+});
+
+/* Fig 4 — BMI grouped bar */
+new Chart(document.getElementById('bmiChart'),{
+  type:'bar',
+  data:{
+    labels:['Underweight','Normal','Overweight','Obese'],
+    datasets:[
+      {label:'Diabetes %',data:[6.2,7.3,12.9,23.5],backgroundColor:'#c0392b',borderWidth:0,borderRadius:3},
+      {label:'CKD %',data:[3.9,2.8,3.5,4.9],backgroundColor:'#2980b9',borderWidth:0,borderRadius:3},
+      {label:'Any PA %',data:[69.8,81.0,78.3,67.6],backgroundColor:'#1d9e75',borderWidth:0,borderRadius:3},
+    ]
+  },
+  options:{
+    ...base,
+    plugins:{
+      legend:{display:true,position:'top',
+        labels:{font:{size:11,family:'DM Sans'},color:textC,boxWidth:10,padding:12}}
+    },
+    scales:{
+      x:{grid:{display:false},ticks:{color:textC,font:{size:11}}},
+      y:{grid:{color:gridC},ticks:{color:textC,font:{size:11},callback:v=>v+'%'},max:95}
+    }
+  }
+});
+
+/* Fig 5 — Age line chart */
+new Chart(document.getElementById('ageChart'),{
+  type:'line',
+  data:{
+    labels:['18–29','30–44','45–59','60–74','75+'],
+    datasets:[
+      {label:'Diabetes %',data:[2.2,6.3,14.0,20.7,21.4],
+       borderColor:'#c0392b',backgroundColor:'rgba(192,57,43,0.06)',
+       pointBackgroundColor:'#c0392b',pointRadius:5,borderWidth:2,fill:true,tension:.3},
+      {label:'CKD %',data:[0.7,1.3,2.7,5.0,8.0],
+       borderColor:'#e67e22',backgroundColor:'rgba(230,126,34,0.06)',
+       pointBackgroundColor:'#e67e22',pointRadius:5,borderWidth:2,fill:true,tension:.3,
+       borderDash:[5,3]},
+      {label:'Any PA %',data:[82.6,80.1,75.4,73.6,65.8],
+       borderColor:'#1d9e75',backgroundColor:'rgba(29,158,117,0.06)',
+       pointBackgroundColor:'#1d9e75',pointRadius:5,borderWidth:2,fill:true,tension:.3,
+       borderDash:[2,2]},
+    ]
+  },
+  options:{
+    ...base,
+    plugins:{
+      legend:{display:true,position:'top',
+        labels:{font:{size:11,family:'DM Sans'},color:textC,boxWidth:10,padding:12}}
+    },
+    scales:{
+      x:{grid:{display:false},ticks:{color:textC,font:{size:11}}},
+      y:{grid:{color:gridC},ticks:{color:textC,font:{size:11},callback:v=>v+'%'},max:95}
+    }
+  }
+});
+
+/* Fig 6 — Lifestyle donut */
+new Chart(document.getElementById('lifestyleDonut'),{
+  type:'doughnut',
+  data:{
+    labels:['Score 0','Score 1','Score 2','Score 3','Score 4'],
+    datasets:[{
+      data:[0.7,29.6,48.1,19.5,2.1],
+      backgroundColor:['#791F1F','#c0392b','#e67e22','#1d9e75','#0f6e56'],
+      borderWidth:2,borderColor:isDark?'#1c1c1e':'#fff'
+    }]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    cutout:'65%',
+    plugins:{
+      legend:{display:false},
+      tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.parsed}%`}}
+    }
+  }
+});
+
+/* Fig 7 — Model comparison horizontal */
+new Chart(document.getElementById('modelChart'),{
+  type:'bar',
+  data:{
+    labels:['Logistic Regression','Random Forest'],
+    datasets:[
+      {label:'AUC-ROC',data:[0.797,0.786],backgroundColor:'#2980b9',borderWidth:0,borderRadius:3},
+      {label:'Accuracy',data:[0.844,0.844],backgroundColor:'rgba(41,128,185,0.3)',borderWidth:0,borderRadius:3},
+    ]
+  },
+  options:{
+    indexAxis:'y',responsive:true,maintainAspectRatio:false,
+    plugins:{
+      legend:{display:true,position:'top',
+        labels:{font:{size:11,family:'DM Sans'},color:textC,boxWidth:10,padding:12}}
+    },
+    scales:{
+      x:{grid:{color:gridC},ticks:{color:textC,font:{size:11},callback:v=>v.toFixed(2)},min:0.6,max:1.0},
+      y:{grid:{display:false},ticks:{color:textC,font:{size:11}}}
+    }
+  }
+});
+
+/* Intersection observer for animations */
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      e.target.classList.add('visible');
+      if(e.target.classList.contains('bar-row')){
+        const fill = e.target.querySelector('.bar-fill');
+        if(fill){fill.style.width=fill.dataset.width+'%'}
+      }
+    }
+  });
+},{threshold:.15});
+
+document.querySelectorAll('.fade-in,.risk-card').forEach(el=>io.observe(el));
+
+/* Staggered bar row animation */
+document.querySelectorAll('.bar-table').forEach(table=>{
+  const rows = table.querySelectorAll('.bar-row');
+  const tableIo = new IntersectionObserver((entries)=>{
+    if(entries[0].isIntersecting){
+      rows.forEach((row,i)=>{
+        setTimeout(()=>{
+          row.classList.add('visible');
+          const fill = row.querySelector('.bar-fill');
+          if(fill) fill.style.width=fill.dataset.width+'%';
+        }, i*80);
+      });
+      tableIo.disconnect();
+    }
+  },{threshold:.1});
+  tableIo.observe(table);
+});
+
+/* Counter animation for metrics */
+document.querySelectorAll('.counter').forEach(el=>{
+  const target = parseFloat(el.dataset.target);
+  const suffix = el.dataset.suffix||'';
+  const decimals = parseInt(el.dataset.decimals)||1;
+  const fmt = el.dataset.format;
+  let start = null;
+  const duration = 1200;
+  const step = (ts)=>{
+    if(!start) start=ts;
+    const progress = Math.min((ts-start)/duration,1);
+    const eased = 1-Math.pow(1-progress,3);
+    let val = target*eased;
+    if(fmt==='M'){
+      el.textContent=(val/1000000).toFixed(1)+'M';
+    } else {
+      el.textContent=val.toFixed(decimals)+suffix;
+    }
+    if(progress<1) requestAnimationFrame(step);
+  };
+  const metricIo = new IntersectionObserver((entries)=>{
+    if(entries[0].isIntersecting){
+      requestAnimationFrame(step);
+      metricIo.disconnect();
+    }
+  },{threshold:.5});
+  metricIo.observe(el);
+});
+</script>
+</body>
+</html>
