@@ -2,7 +2,7 @@
 
 A distributed data pipeline analyzing **3.48 million** CDC survey records across 8 years using Apache PySpark — examining trends in diabetes, obesity, physical activity, and chronic disease risk in the U.S. adult population.
 
-**[View Research Report →](https://yourusername.github.io/brfss-analysis/)**
+**[View Research Report →](https://kevintan701.github.io/brfss-analysis/)**
 
 ---
 
