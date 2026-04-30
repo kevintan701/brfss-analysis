@@ -237,7 +237,7 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
   <p>Several core variables changed names across survey years due to BRFSS rotating-core design, in which some questions alternate between even and odd years. Blood pressure (hypertension) was collected only in odd years (2017, 2019, 2021, 2023); sleep duration was collected only in 2017, 2018, 2020, and 2022. A systematic variable-resolution layer in the pipeline maps each canonical measure to its year-specific equivalent, filling missing values with null for years where a question was not administered. BRFSS-standard non-response codes (7, 9, 77, 99, 777, 999) were replaced with null to ensure missing data is correctly handled throughout the analytical pipeline.</p>
 
   <h3>2.3 Why PySpark</h3>
-  <p>At 3.5 million records and 25+ variables per year, loading the full multi-year file into a single machine's RAM using pandas requires ~8GB and degrades processing speed substantially. PySpark partitions data across multiple CPU cores locally (or cluster nodes in production), enabling the same analytical pipeline to scale from a laptop to a cloud cluster — the architecture used in production healthcare data systems such as CMS Medicare claims processing.<sup class="ref">4</sup> The identical code runs without modification on Databricks or AWS EMR for true distributed deployment.</p>
+  <p>At 3.5 million records across 8 survey years, this dataset exceeds practical limits for single-machine processing. PySpark's distributed architecture partitions data across CPU cores — or across cluster nodes in production — enabling the same pipeline to scale from a local workstation to cloud infrastructure. This scalability mirrors the architecture used in large administrative health data systems, such as CMS Medicare claims processing.<sup class="ref">4</sup></p>
 
   <h3>2.4 Analytical pipeline</h3>
   <p>The pipeline comprises six modular classes: <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSLoader</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSCleaner</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSEngineer</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSAnalyzer</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSModeler</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSPipeline</code>. Each class encapsulates a single analytical responsibility, enabling independent testing and reuse across projects. An 80/20 train-test split was used with fixed random seed (20260301) for reproducibility.</p>
@@ -443,7 +443,7 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
     <li><strong>Rotating-core design.</strong> Hypertension data is available only in odd survey years; sleep in 2017/2018/2020/2022. Year-over-year comparisons for these variables must account for structural missingness, not random attrition.</li>
     <li><strong>Cross-sectional structure.</strong> BRFSS is a repeated cross-section, not a longitudinal cohort. Causal inference about lifestyle-disease relationships requires longitudinal data with temporal ordering of exposures and outcomes.</li>
     <li><strong>Survey weighting not applied.</strong> Analyses use unweighted counts and proportions. Application of BRFSS raking weights is required for nationally representative population estimates — a planned extension.</li>
-    <li><strong>Local computing.</strong> The pipeline ran in PySpark local mode on a single workstation. Production-scale deployment on a distributed cluster (Databricks, AWS EMR) would be required for real-time or streaming analytics on Medicare-scale datasets.</li>
+    <li><strong>Single-machine deployment.</strong> This analysis ran on a single workstation. Deployment on a distributed cloud cluster would be required for real-time or streaming analytics at Medicare-claims scale.</li>
   </ul>
 </section>
 
@@ -495,10 +495,10 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
   <h3>A.2 Software environment</h3>
   <ul style="padding-left:1.5rem;font-size:14.5px;line-height:2">
     <li>Language: Python 3.14</li>
-    <li>Distributed framework: Apache PySpark 4.1.1 (local mode; architecture supports Databricks / AWS EMR deployment)</li>
+    <li>Distributed framework: Apache PySpark 4.1.1</li>
     <li>ML library: pyspark.ml — end-to-end Pipeline with feature assembly, scaling, and classification</li>
     <li>Data ingestion: pyreadstat 1.3.4 (SAS Transport Format → Spark)</li>
-    <li>Output storage: Apache Parquet (columnar format for efficient downstream querying)</li>
+    <li>Output storage: columnar binary format for efficient downstream querying</li>
     <li>Code structure: 6 modular classes with full documentation and structured logging</li>
   </ul>
 </section>
