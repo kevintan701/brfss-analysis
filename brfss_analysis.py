@@ -413,6 +413,7 @@ class BRFSSCleaner:
         """
         self.logger.info("Starting data cleaning ...")
         t0 = time.time()
+        survey_df = raw_survey_df
 
         # ── Step 1: Cast to DoubleType ──────────────────────────────────────
         numeric_cols = [c for c in survey_df.columns if c != "state_name"]
@@ -608,7 +609,7 @@ class BRFSSEngineer:
         """
         self.logger.info("Starting feature engineering ...")
         t0 = time.time()
-        feature_df = cleaned_survey_df  # working copy for chained transformations
+        feature_df = cleaned_survey_df
 
         # ── Binary outcome flags ─────────────────────────────────────────────
         feature_df = self._make_binary_outcome(feature_df, "DIABETE4",  "flag_diabetes",  [1, 2])
