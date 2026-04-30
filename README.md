@@ -33,7 +33,7 @@ BRFSSLoader → BRFSSCleaner → BRFSSEngineer → BRFSSAnalyzer → BRFSSModele
 | `BRFSSEngineer` | Binary outcome flags, composite lifestyle score (0–4), disease burden index, log transforms |
 | `BRFSSAnalyzer` | 10-section EDA: prevalence tables, year trends, group comparisons |
 | `BRFSSModeler` | Logistic regression + random forest, AUC/accuracy evaluation, feature importances |
-| `BRFSSPipeline` | End-to-end orchestrator with Spark cache management and Parquet export |
+| `BRFSSPipeline` | End-to-end orchestrator: coordinates all stages, manages intermediate datasets, and exports results |
 
 ---
 
