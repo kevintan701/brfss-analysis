@@ -39,11 +39,11 @@ BRFSSLoader → BRFSSCleaner → BRFSSEngineer → BRFSSAnalyzer → BRFSSModele
 
 ## Technical Highlights
 
-**Cross-year variable harmonization.** BRFSS uses rotating-core survey design — some variables alternate between even and odd years. The pipeline resolves this with a `COLUMN_ALIASES` mapping and graceful NaN-fill, then applies `F.isnan()` alongside `F.isNull()` to correctly handle the pandas → Spark type bridge (where pandas `np.nan` becomes Spark float `NaN`, not `null`).
+**Cross-year variable harmonization.** BRFSS uses a rotating-core survey design in which some questions alternate between even and odd years. The pipeline systematically resolves cross-year naming inconsistencies and correctly distinguishes between questions that were not administered in a given year versus questions that received a non-response — ensuring that structural missingness is not conflated with item non-response.
 
-**Production engineering standards.** All classes use Google-style docstrings, Python `logging` module (no `print()`), and type hints. The pipeline is structured to run identically in local mode or on a distributed cluster (Databricks, AWS EMR).
+**Production engineering standards.** All classes include full documentation, structured logging, and type hints — following conventions used in production data engineering environments. The pipeline architecture is designed to scale from a single workstation to a distributed cloud cluster without code changes.
 
-**ML at scale.** Models trained on 2,517,825 records with `VectorAssembler` → `StandardScaler` → classifier pipelines. The `dropna(subset=required)` approach preserves rotating-core records with partial missingness, increasing training coverage from ~8% to ~90% of the dataset.
+**ML at scale.** Models were trained on 2,517,825 records using a standardized feature assembly and scaling pipeline. By requiring non-null values only for the primary outcome and core demographics — rather than all variables — training coverage increased from ~8% to ~90% of the full dataset, making full use of records where optional variables were not collected.
 
 ---
 
@@ -128,7 +128,7 @@ python brfss_analysis.py
 
 Expected runtime: ~7–8 minutes on a standard laptop (local Spark mode).
 
-Output saved to `./brfss_output/brfss_scored/` in Parquet format.
+Output saved to `./brfss_output/brfss_scored/`.
 
 ---
 
@@ -138,16 +138,16 @@ Output saved to `./brfss_output/brfss_scored/` in Parquet format.
 
 | Variable | Available years |
 |---|---|
-| Hypertension (`BPHIGH4`/`BPHIGH6`) | 2017, 2019, 2021, 2023 |
-| Sleep duration (`SLEPTIM1`) | 2017, 2018, 2020, 2022 |
-| Kidney disease (`CHCKDNY2`) | 2018–2024 |
-| Diabetes (`DIABETE4`) | All years |
+| Hypertension | 2017, 2019, 2021, 2023 |
+| Sleep duration | 2017, 2018, 2020, 2022 |
+| Kidney disease | 2018–2024 |
+| Diabetes | All years |
 
 Year-over-year HTN comparisons are restricted to odd years to avoid misleading 0% values caused by rotating-core structural missingness.
 
-**Missing value codes.** BRFSS encodes non-response as trailing 7s and 9s (7, 9, 77, 99, 777, 999). These are replaced with null during cleaning. Spark float `NaN` values (from the pyreadstat → pandas → Spark bridge) are handled separately via `F.isnan()`.
+**Missing value codes.** BRFSS encodes non-response and refusal as trailing 7s and 9s (7, 9, 77, 99, 777, 999). These are replaced with null values during the cleaning stage to ensure consistent missing data handling throughout the pipeline.
 
-**Survey weights.** Analyses use unweighted proportions. For population-representative estimates, apply `_LLCPWT` raking weights — a planned extension.
+**Survey weights.** Analyses use unweighted proportions. For population-representative estimates, BRFSS raking weights should be applied — a planned extension of this work.
 
 ---
 
