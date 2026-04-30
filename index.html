@@ -234,13 +234,13 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
   <p>Data were obtained from the CDC BRFSS annual public-use files for survey years 2017–2024 (files: <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">LLCP20XX.XPT</code>, SAS Transport format).<sup class="ref">3</sup> BRFSS collects state-specific data on health risk behaviors, chronic diseases, and preventive health service use from the non-institutionalized adult population (≥18 years) via telephone interview. Since 2011, BRFSS has employed a dual-frame design combining landline and cellular telephone sampling, with iterative proportional fitting (raking) weights to improve representativeness across demographic margins.<sup class="ref">5</sup></p>
 
   <h3>2.2 Variable harmonization</h3>
-  <p>Several core variables changed names across survey years due to BRFSS rotating-core design, in which some questions alternate between even and odd years. Blood pressure (hypertension) was collected only in odd years (2017, 2019, 2021, 2023) using variables <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BPHIGH4</code>/<code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BPHIGH6</code>; sleep duration was collected only in even years plus 2017. A systematic alias-resolution layer was implemented in the PySpark pipeline to map canonical variable names to their year-specific equivalents, with NaN-fill for years where a question was not administered. BRFSS-standard missing value codes (7, 9, 77, 99, 777, 999) were replaced with null; Spark float <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">NaN</code> values (introduced by the pandas bridge layer) were handled separately via <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">F.isnan()</code>.</p>
+  <p>Several core variables changed names across survey years due to BRFSS rotating-core design, in which some questions alternate between even and odd years. Blood pressure (hypertension) was collected only in odd years (2017, 2019, 2021, 2023); sleep duration was collected only in 2017, 2018, 2020, and 2022. A systematic variable-resolution layer in the pipeline maps each canonical measure to its year-specific equivalent, filling missing values with null for years where a question was not administered. BRFSS-standard non-response codes (7, 9, 77, 99, 777, 999) were replaced with null to ensure missing data is correctly handled throughout the analytical pipeline.</p>
 
   <h3>2.3 Why PySpark</h3>
   <p>At 3.5 million records and 25+ variables per year, loading the full multi-year file into a single machine's RAM using pandas requires ~8GB and degrades processing speed substantially. PySpark partitions data across multiple CPU cores locally (or cluster nodes in production), enabling the same analytical pipeline to scale from a laptop to a cloud cluster — the architecture used in production healthcare data systems such as CMS Medicare claims processing.<sup class="ref">4</sup> The identical code runs without modification on Databricks or AWS EMR for true distributed deployment.</p>
 
   <h3>2.4 Analytical pipeline</h3>
-  <p>The pipeline comprises six modular classes: <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSLoader</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSCleaner</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSEngineer</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSAnalyzer</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSModeler</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSPipeline</code>. All functions include Google-style docstrings and Python logging (replacing print statements) to enable production-grade log capture. Output is saved in Apache Parquet format for efficient downstream analysis. An 80/20 train-test split was used with fixed seed (20260301) for reproducibility.</p>
+  <p>The pipeline comprises six modular classes: <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSLoader</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSCleaner</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSEngineer</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSAnalyzer</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSModeler</code> → <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">BRFSSPipeline</code>. Each class encapsulates a single analytical responsibility, enabling independent testing and reuse across projects. An 80/20 train-test split was used with fixed random seed (20260301) for reproducibility.</p>
 </section>
 
 <hr class="div">
@@ -377,7 +377,7 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
   <h2 class="sec-title">Machine Learning: Diabetes Risk Classification</h2>
 
   <h3>5.1 Model performance</h3>
-  <p>Two models were trained on 2,517,825 records (80%) and evaluated on 629,712 records (20%). The training dataset used only records with non-null values for the outcome (diabetes flag) and core demographic features (age, BMI, sex), allowing optional features (sleep, mental health days) to be missing without exclusion — appropriate for the rotating-core survey design. Feature vectors with null values were handled via <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">handleInvalid="skip"</code> in VectorAssembler.</p>
+  <p>Two models were trained on 2,517,825 records (80%) and evaluated on 629,712 records (20%). The training dataset required non-null values for the primary outcome (diabetes) and core demographic features (age, BMI, sex), while allowing optional variables — sleep duration and mental health days — to be missing where not collected, consistent with the rotating-core survey design. This approach preserved approximately 90% of all records for model training, compared to 8% under a complete-case restriction.</p>
 
   <div class="chart-section">
     <div class="chart-title">Figure 7. Model comparison — AUC and accuracy</div>
@@ -427,9 +427,9 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
 
   <p>The strong predictive contribution of self-rated health (importance 0.348) is notable and consistent with meta-analytic evidence that single-item global health ratings are robust predictors of mortality, hospitalization, and incident chronic disease, capturing latent health state variance not accounted for by objective biomarkers alone.<sup class="ref">8</sup></p>
 
-  <p>From a methodological perspective, the PySpark pipeline developed here — with modular class architecture, comprehensive docstrings, and Python logging — provides a scalable framework directly applicable to large administrative healthcare databases. The same pipeline could process CMS Medicare claims data (3M+ ESRD beneficiaries in KECC's database) without modification, simply by replacing the BRFSS XPT loader with a claims file reader.</p>
+  <p>From a methodological perspective, the modular PySpark pipeline developed here provides a scalable framework directly applicable to large administrative healthcare databases. The same architecture could process CMS Medicare claims data — including the 3M+ ESRD beneficiaries in the KECC database — without modification, simply by substituting the data ingestion layer with a claims file reader while preserving all downstream cleaning, feature engineering, and modeling stages.</p>
 
-  <p><strong>Future directions.</strong> Longitudinal analysis linking individual respondents across years would strengthen causal inference. Survey-weighted estimates (using <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">_LLCPWT</code>) would enable population-representative projections. Integration with geographic data (Census tract-level SDOH indicators) via Spark spatial joins would add an environmental dimension to lifestyle-disease associations.<sup class="ref">11</sup></p>
+  <p><strong>Future directions.</strong> Longitudinal analysis linking individual respondents across years would strengthen causal inference. Application of BRFSS raking survey weights would enable population-representative projections. Integration with geographic data (Census tract-level social determinants of health) via spatial joins would add an environmental dimension to lifestyle-disease associations.<sup class="ref">11</sup></p>
 </section>
 
 <hr class="div">
@@ -442,7 +442,7 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
     <li><strong>Self-reported data.</strong> All BRFSS responses are self-reported, introducing social desirability bias — particularly for physical activity, BMI (height/weight), and disease diagnoses. Validated clinical measurements would strengthen findings.</li>
     <li><strong>Rotating-core design.</strong> Hypertension data is available only in odd survey years; sleep in 2017/2018/2020/2022. Year-over-year comparisons for these variables must account for structural missingness, not random attrition.</li>
     <li><strong>Cross-sectional structure.</strong> BRFSS is a repeated cross-section, not a longitudinal cohort. Causal inference about lifestyle-disease relationships requires longitudinal data with temporal ordering of exposures and outcomes.</li>
-    <li><strong>Survey weighting not applied.</strong> Analyses use unweighted counts and proportions. Application of <code style="font-family:var(--mono);font-size:13px;background:#f0f0ee;padding:1px 5px;border-radius:3px">_LLCPWT</code> raking weights is required for nationally representative population estimates — a planned extension.</li>
+    <li><strong>Survey weighting not applied.</strong> Analyses use unweighted counts and proportions. Application of BRFSS raking weights is required for nationally representative population estimates — a planned extension.</li>
     <li><strong>Local computing.</strong> The pipeline ran in PySpark local mode on a single workstation. Production-scale deployment on a distributed cluster (Databricks, AWS EMR) would be required for real-time or streaming analytics on Medicare-scale datasets.</li>
   </ul>
 </section>
@@ -495,11 +495,11 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
   <h3>A.2 Software environment</h3>
   <ul style="padding-left:1.5rem;font-size:14.5px;line-height:2">
     <li>Language: Python 3.14</li>
-    <li>Distributed framework: Apache PySpark 4.1.1 (local mode; production-ready for Databricks / AWS EMR)</li>
-    <li>ML library: pyspark.ml — Pipeline, LogisticRegression, RandomForestClassifier, StandardScaler, VectorAssembler</li>
-    <li>Data ingestion: pyreadstat 1.3.4 (XPT → pandas → Spark bridge)</li>
-    <li>Output storage: Apache Parquet (columnar, compressed)</li>
-    <li>Code structure: 6 classes with Google-style docstrings and Python logging module</li>
+    <li>Distributed framework: Apache PySpark 4.1.1 (local mode; architecture supports Databricks / AWS EMR deployment)</li>
+    <li>ML library: pyspark.ml — end-to-end Pipeline with feature assembly, scaling, and classification</li>
+    <li>Data ingestion: pyreadstat 1.3.4 (SAS Transport Format → Spark)</li>
+    <li>Output storage: Apache Parquet (columnar format for efficient downstream querying)</li>
+    <li>Code structure: 6 modular classes with full documentation and structured logging</li>
   </ul>
 </section>
 
