@@ -280,9 +280,9 @@ class BRFSSLoader:
             else:
                 selected[canonical] = df_raw[canonical]
 
-        df_out = pd.DataFrame(selected)
-        df_out["survey_year"] = year
-        return df_out
+        year_survey_df = pd.DataFrame(selected)
+        year_survey_df["survey_year"] = year
+        return year_survey_df
 
     def load_all_years(self) -> DataFrame:
         """
@@ -308,9 +308,9 @@ class BRFSSLoader:
         frames: List[pd.DataFrame] = []
 
         for year in self.config.years:
-            df_year = self._load_single_year(year)
-            if df_year is not None:
-                frames.append(df_year)
+            year_survey_df = self._load_single_year(year)
+            if year_survey_df is not None:
+                frames.append(year_survey_df)
 
         if not frames:
             raise RuntimeError(
@@ -326,10 +326,10 @@ class BRFSSLoader:
         )
 
         self.logger.info("Converting to Spark DataFrame ...")
-        df_spark = self.spark.createDataFrame(combined_pd)
-        total = df_spark.count()
+        combined_spark_df = self.spark.createDataFrame(combined_pd)
+        total = combined_spark_df.count()
         self.logger.info("Spark DataFrame created: %d total records", total)
-        return df_spark
+        return combined_spark_df
 
 
 # =============================================================================
@@ -358,7 +358,7 @@ class BRFSSCleaner:
         self.config = config
         self.logger = logging.getLogger("brfss.cleaner")
 
-    def _replace_missing(self, df: DataFrame, col: str) -> DataFrame:
+    def _nullify_missing_codes(self, survey_df: DataFrame, col: str) -> DataFrame:
         """
         Replace BRFSS refused/don't-know codes with null for one column.
 
@@ -369,7 +369,7 @@ class BRFSSCleaner:
 
         Parameters
         ----------
-        df : DataFrame
+        survey_df : DataFrame
         col : str
             Column name to process.
 
@@ -380,7 +380,7 @@ class BRFSSCleaner:
         """
         # Determine which missing codes to apply based on observed max value.
         # We check all three tiers; Spark evaluates lazily so this is safe.
-        return df.withColumn(
+        return survey_df.withColumn(
             col,
             F.when(F.col(col).isin(
                 self.config.missing_codes["single_digit"]
@@ -389,7 +389,7 @@ class BRFSSCleaner:
             ), None).otherwise(F.col(col))
         )
 
-    def clean(self, df: DataFrame) -> DataFrame:
+    def standardize_survey_data(self, raw_survey_df: DataFrame) -> DataFrame:
         """
         Apply all cleaning transformations to the raw BRFSS DataFrame.
 
@@ -402,7 +402,7 @@ class BRFSSCleaner:
 
         Parameters
         ----------
-        df : DataFrame
+        survey_df : DataFrame
             Raw combined BRFSS DataFrame from BRFSSLoader.
 
         Returns
@@ -415,10 +415,10 @@ class BRFSSCleaner:
         t0 = time.time()
 
         # ── Step 1: Cast to DoubleType ──────────────────────────────────────
-        numeric_cols = [c for c in df.columns if c != "state_name"]
+        numeric_cols = [c for c in survey_df.columns if c != "state_name"]
         for col in numeric_cols:
-            if df.schema[col].dataType not in (DoubleType(), IntegerType()):
-                df = df.withColumn(col, F.col(col).cast(DoubleType()))
+            if survey_df.schema[col].dataType not in (DoubleType(), IntegerType()):
+                survey_df = survey_df.withColumn(col, F.col(col).cast(DoubleType()))
 
         # ── Step 2: Replace missing codes ───────────────────────────────────
         missing_flag_cols = [
@@ -427,23 +427,23 @@ class BRFSSCleaner:
             "CVDCRHD4", "CHCKDNY2", "SEXVAR", "EXERHMM1", "PA1MIN_",
         ]
         for col in missing_flag_cols:
-            if col in df.columns:
-                df = self._replace_missing(df, col)
+            if col in survey_df.columns:
+                survey_df = self._nullify_missing_codes(survey_df, col)
 
         # ── Step 3: Variable-specific transformations ────────────────────────
 
         # BMI: stored as integer × 100 (e.g. 2500 → 25.0 kg/m²)
-        if "_BMI5" in df.columns:
-            df = df.withColumn("bmi", F.col("_BMI5") / 100.0)
-            df = df.withColumn(
+        if "_BMI5" in survey_df.columns:
+            survey_df = survey_df.withColumn("bmi", F.col("_BMI5") / 100.0)
+            survey_df = survey_df.withColumn(
                 "bmi",
                 F.when((F.col("bmi") < 10) | (F.col("bmi") > 80), None)
                  .otherwise(F.col("bmi"))
             )
 
         # Sleep: valid range 1-24 hours
-        if "SLEPTIM1" in df.columns:
-            df = df.withColumn(
+        if "SLEPTIM1" in survey_df.columns:
+            survey_df = survey_df.withColumn(
                 "sleep_hrs",
                 F.when(
                     (F.col("SLEPTIM1") >= 1) & (F.col("SLEPTIM1") <= 24),
@@ -452,8 +452,8 @@ class BRFSSCleaner:
             )
 
         # GENHLTH: 1=Excellent … 5=Poor → reverse so higher = healthier
-        if "GENHLTH" in df.columns:
-            df = df.withColumn(
+        if "GENHLTH" in survey_df.columns:
+            survey_df = survey_df.withColumn(
                 "gen_health",
                 F.when(F.col("GENHLTH").between(1, 5), 6 - F.col("GENHLTH"))
                  .otherwise(None)
@@ -461,8 +461,8 @@ class BRFSSCleaner:
 
         # Mental and physical health days (0-30)
         for raw, clean in [("MENTHLTH", "mental_hlth_days"), ("PHYSHLTH", "phys_hlth_days")]:
-            if raw in df.columns:
-                df = df.withColumn(
+            if raw in survey_df.columns:
+                survey_df = survey_df.withColumn(
                     clean,
                     F.when(
                         (F.col(raw) >= 0) & (F.col(raw) <= 30),
@@ -471,8 +471,8 @@ class BRFSSCleaner:
                 )
 
         # Physical activity minutes/week (cap at 10,000 as outlier guard)
-        if "PA1MIN_" in df.columns:
-            df = df.withColumn(
+        if "PA1MIN_" in survey_df.columns:
+            survey_df = survey_df.withColumn(
                 "pa_min_week",
                 F.when(
                     (F.col("PA1MIN_") >= 0) & (F.col("PA1MIN_") <= 10000),
@@ -482,8 +482,8 @@ class BRFSSCleaner:
 
         # Meets CDC PA guidelines: ≥150 min moderate / ≥75 min vigorous per week
         # PA1MIN_ is already in total equivalent minutes (vigorous × 2 + moderate)
-        if "PA1MIN_" in df.columns:
-            df = df.withColumn(
+        if "PA1MIN_" in survey_df.columns:
+            survey_df = survey_df.withColumn(
                 "meets_pa_guidelines",
                 F.when(F.col("PA1MIN_").isNull(), None)
                  .when(F.col("PA1MIN_") >= 150, F.lit(1))
@@ -491,13 +491,13 @@ class BRFSSCleaner:
             )
 
         # Sex: standardize to 1=Male, 2=Female
-        if "SEXVAR" in df.columns:
-            df = df.withColumn(
+        if "SEXVAR" in survey_df.columns:
+            survey_df = survey_df.withColumn(
                 "sex",
                 F.when(F.col("SEXVAR").isin([1, 2]), F.col("SEXVAR").cast(IntegerType()))
                  .otherwise(None)
             )
-            df = df.withColumn(
+            survey_df = survey_df.withColumn(
                 "sex_label",
                 F.when(F.col("sex") == 1, "Male")
                  .when(F.col("sex") == 2, "Female")
@@ -505,8 +505,8 @@ class BRFSSCleaner:
             )
 
         # Age groups
-        if "_AGE80" in df.columns:
-            df = df.withColumn(
+        if "_AGE80" in survey_df.columns:
+            survey_df = survey_df.withColumn(
                 "age_group",
                 F.when(F.col("_AGE80") < 30,  "18–29")
                  .when(F.col("_AGE80") < 45,  "30–44")
@@ -516,8 +516,8 @@ class BRFSSCleaner:
             )
 
         # Physical activity category
-        if "_TOTINDA" in df.columns:
-            df = df.withColumn(
+        if "_TOTINDA" in survey_df.columns:
+            survey_df = survey_df.withColumn(
                 "pa_any",
                 F.when(F.col("_TOTINDA") == 1, 1)
                  .when(F.col("_TOTINDA") == 2, 0)
@@ -526,7 +526,7 @@ class BRFSSCleaner:
 
         elapsed = time.time() - t0
         self.logger.info("Cleaning complete in %.1fs.", elapsed)
-        return df
+        return survey_df
 
 
 # =============================================================================
@@ -555,14 +555,14 @@ class BRFSSEngineer:
         self.logger = logging.getLogger("brfss.engineer")
 
     def _make_binary_outcome(
-        self, df: DataFrame, raw_col: str, new_col: str, yes_codes: List[int]
+        self, survey_df: DataFrame, raw_col: str, new_col: str, yes_codes: List[int]
     ) -> DataFrame:
         """
         Create a binary (0/1) outcome flag from a BRFSS categorical variable.
 
         Parameters
         ----------
-        df : DataFrame
+        survey_df : DataFrame
         raw_col : str
             Source column containing the BRFSS response codes.
         new_col : str
@@ -575,26 +575,29 @@ class BRFSSEngineer:
         -------
         DataFrame
         """
-        if raw_col not in df.columns:
+        if raw_col not in survey_df.columns:
             self.logger.debug(
                 "Column '%s' not found; '%s' will be null.", raw_col, new_col
             )
-            return df.withColumn(new_col, F.lit(None).cast(IntegerType()))
+            return survey_df.withColumn(new_col, F.lit(None).cast(IntegerType()))
 
-        return df.withColumn(
+        return survey_df.withColumn(
             new_col,
-            F.when(F.col(raw_col).isNull(), None)
+            # NaN (from pandas NaN-fill for missing rotating-core years) and
+            # null are both treated as missing. isNull() catches Spark nulls;
+            # isnan() catches float NaN values introduced by the pandas bridge.
+            F.when(F.col(raw_col).isNull() | F.isnan(F.col(raw_col)), None)
              .when(F.col(raw_col).isin(yes_codes), F.lit(1))
              .otherwise(F.lit(0))
         )
 
-    def engineer(self, df: DataFrame) -> DataFrame:
+    def build_analytic_features(self, cleaned_survey_df: DataFrame) -> DataFrame:
         """
         Apply all feature engineering transformations.
 
         Parameters
         ----------
-        df : DataFrame
+        feature_df : DataFrame
             Cleaned BRFSS DataFrame from BRFSSCleaner.
 
         Returns
@@ -607,13 +610,13 @@ class BRFSSEngineer:
         t0 = time.time()
 
         # ── Binary outcome flags ─────────────────────────────────────────────
-        df = self._make_binary_outcome(df, "DIABETE4",  "flag_diabetes",  [1, 2])
-        df = self._make_binary_outcome(df, "BPHIGH6",   "flag_htn",       [1])
-        df = self._make_binary_outcome(df, "CVDCRHD4",  "flag_chd",       [1])
-        df = self._make_binary_outcome(df, "CHCKDNY2",  "flag_ckd",       [1])
+        feature_df = self._make_binary_outcome(feature_df, "DIABETE4",  "flag_diabetes",  [1, 2])
+        feature_df = self._make_binary_outcome(feature_df, "BPHIGH6",   "flag_htn",       [1])
+        feature_df = self._make_binary_outcome(feature_df, "CVDCRHD4",  "flag_chd",       [1])
+        feature_df = self._make_binary_outcome(feature_df, "CHCKDNY2",  "flag_ckd",       [1])
 
         # Obesity flag: BMI ≥ 30
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "flag_obese",
             F.when(F.col("bmi").isNull(), None)
              .when(F.col("bmi") >= 30, F.lit(1))
@@ -621,7 +624,7 @@ class BRFSSEngineer:
         )
 
         # Poor sleep flag: < 7 hours (CDC recommended minimum)
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "flag_poor_sleep",
             F.when(F.col("sleep_hrs").isNull(), None)
              .when(F.col("sleep_hrs") < 7, F.lit(1))
@@ -629,7 +632,7 @@ class BRFSSEngineer:
         )
 
         # Mental health burden flag: ≥ 14 poor mental health days/month
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "flag_mental_burden",
             F.when(F.col("mental_hlth_days").isNull(), None)
              .when(F.col("mental_hlth_days") >= 14, F.lit(1))
@@ -643,7 +646,7 @@ class BRFSSEngineer:
         # We treat null as 0 only for diabetes/CKD/CHD which are available
         # every year. flag_htn is excluded from coalesce so that even-year
         # rows are not incorrectly scored as HTN-negative.
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "disease_burden",
             F.coalesce(F.col("flag_diabetes"), F.lit(0))
             + F.coalesce(F.col("flag_htn"),     F.lit(0))
@@ -651,7 +654,7 @@ class BRFSSEngineer:
             + F.coalesce(F.col("flag_chd"),     F.lit(0))
         )
         # flag_htn_available: 1 if HTN data was collected this survey year
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "flag_htn_available",
             F.when(F.col("flag_htn").isNotNull(), F.lit(1)).otherwise(F.lit(0))
         )
@@ -661,7 +664,7 @@ class BRFSSEngineer:
         # +1 for adequate sleep (≥7 hrs)
         # +1 for healthy BMI (18.5–24.9)
         # +1 for never-smoker or former smoker (SMOKE100 = 2 means never)
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "lifestyle_score",
             F.coalesce(F.col("meets_pa_guidelines"), F.lit(0))
             + F.coalesce(
@@ -678,7 +681,7 @@ class BRFSSEngineer:
         )
 
         # ── BMI category label ───────────────────────────────────────────────
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "bmi_cat",
             F.when(F.col("bmi") < 18.5, "Underweight")
              .when(F.col("bmi") < 25.0, "Normal")
@@ -688,21 +691,21 @@ class BRFSSEngineer:
         )
 
         # ── Log transforms for skewed continuous variables ───────────────────
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "log_pa_min",
             F.when(F.col("pa_min_week") > 0, F.log1p(F.col("pa_min_week")))
              .otherwise(F.lit(0.0))
         )
 
         # ── Year-over-year trend column ──────────────────────────────────────
-        df = df.withColumn(
+        feature_df = feature_df.withColumn(
             "years_since_2017",
             (F.col("survey_year") - 2017).cast(DoubleType())
         )
 
         elapsed = time.time() - t0
         self.logger.info("Feature engineering complete in %.1fs.", elapsed)
-        return df
+        return feature_df
 
 
 # =============================================================================
@@ -733,28 +736,28 @@ class BRFSSAnalyzer:
         self.config = config
         self.logger = logging.getLogger("brfss.analyzer")
 
-    def _log_df(self, df: DataFrame, title: str, n: int = 30) -> None:
+    def _print_summary_table(self, summary_df: DataFrame, title: str, n: int = 30) -> None:
         """
         Log a Spark DataFrame as a formatted table.
 
         Parameters
         ----------
-        df : DataFrame
+        summary_df : DataFrame
         title : str
             Section header printed before the table.
         n : int
             Maximum number of rows to display.
         """
         self.logger.info("── %s ──", title)
-        df.show(n, truncate=False)
+        summary_df.show(n, truncate=False)
 
-    def run(self, df: DataFrame) -> None:
+    def compute_descriptive_statistics(self, analytic_df: DataFrame) -> None:
         """
         Execute the full EDA suite and log results.
 
         Parameters
         ----------
-        df : DataFrame
+        analytic_df : DataFrame
             Engineered BRFSS DataFrame.
         """
         self.logger.info("=" * 60)
@@ -762,11 +765,11 @@ class BRFSSAnalyzer:
         self.logger.info("=" * 60)
 
         # ── 4.1 Overall sample overview ──────────────────────────────────────
-        total_n = df.count()
+        total_n = analytic_df.count()
         self.logger.info("Total records across all years: %d", total_n)
 
-        self._log_df(
-            df.select(
+        self._print_summary_table(
+            analytic_df.select(
                 F.count("*").alias("N"),
                 F.round(F.mean("_AGE80"), 1).alias("mean_age"),
                 F.round(F.mean("bmi"), 1).alias("mean_bmi"),
@@ -778,16 +781,16 @@ class BRFSSAnalyzer:
         )
 
         # ── 4.2 Records per survey year ──────────────────────────────────────
-        self._log_df(
-            df.groupBy("survey_year")
+        self._print_summary_table(
+            analytic_df.groupBy("survey_year")
               .agg(F.count("*").alias("N"))
               .orderBy("survey_year"),
             "4.2 Records by Survey Year"
         )
 
         # ── 4.3 Chronic disease prevalence (overall) ─────────────────────────
-        self._log_df(
-            df.select(
+        self._print_summary_table(
+            analytic_df.select(
                 F.round(F.mean("flag_diabetes") * 100, 1).alias("Diabetes_%"),
                 F.round(F.mean("flag_htn")      * 100, 1).alias("Hypertension_%"),
                 F.round(F.mean("flag_ckd")      * 100, 1).alias("CKD_%"),
@@ -801,8 +804,8 @@ class BRFSSAnalyzer:
         # Note: HTN data only available in odd years (BRFSS rotating core).
         # Sleep data only available in 2017/2018/2020/2022 (rotating core).
         # HTN_% shows NULL for even years — this is expected, not a data error.
-        self._log_df(
-            df.groupBy("survey_year").agg(
+        self._print_summary_table(
+            analytic_df.groupBy("survey_year").agg(
                 F.count("*").alias("N"),
                 F.round(F.mean("flag_diabetes") * 100, 1).alias("Diabetes_%"),
                 F.when(
@@ -820,8 +823,8 @@ class BRFSSAnalyzer:
         )
 
         # ── 4.5 Outcomes by physical activity level ──────────────────────────
-        self._log_df(
-            df.groupBy("meets_pa_guidelines").agg(
+        self._print_summary_table(
+            analytic_df.groupBy("meets_pa_guidelines").agg(
                 F.count("*").alias("N"),
                 F.round(F.mean("flag_diabetes") * 100, 1).alias("Diabetes_%"),
                 F.round(F.mean("flag_htn")      * 100, 1).alias("HTN_%"),
@@ -834,8 +837,8 @@ class BRFSSAnalyzer:
         )
 
         # ── 4.6 Outcomes by sleep adequacy ───────────────────────────────────
-        self._log_df(
-            df.groupBy("flag_poor_sleep").agg(
+        self._print_summary_table(
+            analytic_df.groupBy("flag_poor_sleep").agg(
                 F.count("*").alias("N"),
                 F.round(F.mean("flag_diabetes")      * 100, 1).alias("Diabetes_%"),
                 F.round(F.mean("flag_htn")           * 100, 1).alias("HTN_%"),
@@ -846,8 +849,8 @@ class BRFSSAnalyzer:
         )
 
         # ── 4.7 Outcomes by BMI category ─────────────────────────────────────
-        self._log_df(
-            df.groupBy("bmi_cat").agg(
+        self._print_summary_table(
+            analytic_df.groupBy("bmi_cat").agg(
                 F.count("*").alias("N"),
                 F.round(F.mean("flag_diabetes") * 100, 1).alias("Diabetes_%"),
                 F.round(F.mean("flag_htn")      * 100, 1).alias("HTN_%"),
@@ -858,8 +861,8 @@ class BRFSSAnalyzer:
         )
 
         # ── 4.8 Lifestyle score distribution ─────────────────────────────────
-        self._log_df(
-            df.groupBy("lifestyle_score").agg(
+        self._print_summary_table(
+            analytic_df.groupBy("lifestyle_score").agg(
                 F.count("*").alias("N"),
                 F.round(F.count("*") / total_n * 100, 1).alias("Pct"),
                 F.round(F.mean("flag_diabetes") * 100, 1).alias("Diabetes_%"),
@@ -869,8 +872,8 @@ class BRFSSAnalyzer:
         )
 
         # ── 4.9 Sex breakdown ─────────────────────────────────────────────────
-        self._log_df(
-            df.groupBy("sex_label").agg(
+        self._print_summary_table(
+            analytic_df.groupBy("sex_label").agg(
                 F.count("*").alias("N"),
                 F.round(F.mean("flag_diabetes") * 100, 1).alias("Diabetes_%"),
                 F.round(F.mean("flag_htn")      * 100, 1).alias("HTN_%"),
@@ -881,8 +884,8 @@ class BRFSSAnalyzer:
         )
 
         # ── 4.10 Age group breakdown ─────────────────────────────────────────
-        self._log_df(
-            df.groupBy("age_group").agg(
+        self._print_summary_table(
+            analytic_df.groupBy("age_group").agg(
                 F.count("*").alias("N"),
                 F.round(F.mean("flag_diabetes") * 100, 1).alias("Diabetes_%"),
                 F.round(F.mean("flag_htn")      * 100, 1).alias("HTN_%"),
@@ -951,7 +954,7 @@ class BRFSSModeler:
         self.outcome_col = outcome_col
         self.logger = logging.getLogger("brfss.modeler")
 
-    def _prepare(self, df: DataFrame) -> Tuple[DataFrame, DataFrame]:
+    def _prepare(self, modeling_df: DataFrame) -> Tuple[DataFrame, DataFrame]:
         """
         Filter to complete cases for modelling and split train/test.
 
@@ -960,26 +963,26 @@ class BRFSSModeler:
 
         Parameters
         ----------
-        df : DataFrame
+        modeling_df : DataFrame
 
         Returns
         -------
         Tuple[DataFrame, DataFrame]
             (train_df, test_df)
         """
-        available = [c for c in self.FEATURE_COLS if c in df.columns]
+        available = [c for c in self.FEATURE_COLS if c in modeling_df.columns]
         keep_cols = available + [self.outcome_col]
 
         required = [self.outcome_col, "bmi", "_AGE80", "sex"]
-        df_model = df.select(keep_cols).dropna(subset=required)
+        model_input_df = modeling_df.select(keep_cols).dropna(subset=required)
 
-        n_total = df_model.count()
+        n_total = model_input_df.count()
         self.logger.info(
             "Modelling dataset: %d records after dropping nulls (outcome: %s)",
             n_total, self.outcome_col,
         )
 
-        train_df, test_df = df_model.randomSplit(
+        train_df, test_df = model_input_df.randomSplit(
             [self.config.train_ratio, 1 - self.config.train_ratio],
             seed=self.config.seed,
         )
@@ -1020,14 +1023,14 @@ class BRFSSModeler:
         )
         return {"auc": auc, "accuracy": acc}
 
-    def run(self, df: DataFrame) -> Dict[str, Dict[str, float]]:
+    def train_and_evaluate_models(self, analytic_df: DataFrame) -> Dict[str, Dict[str, float]]:
         """
         Train logistic regression and random forest, evaluate both models,
         and log feature importances for the random forest.
 
         Parameters
         ----------
-        df : DataFrame
+        analytic_df : DataFrame
             Engineered BRFSS DataFrame.
 
         Returns
@@ -1042,9 +1045,9 @@ class BRFSSModeler:
         )
         self.logger.info("=" * 60)
 
-        train_df, test_df = self._prepare(df)
+        train_df, test_df = self._prepare(analytic_df)
 
-        available_features = [c for c in self.FEATURE_COLS if c in df.columns]
+        available_features = [c for c in self.FEATURE_COLS if c in analytic_df.columns]
 
         # ── Shared preprocessing stages ──────────────────────────────────────
         assembler = VectorAssembler(
@@ -1161,7 +1164,7 @@ class BRFSSPipeline:
         self.logger.info("SparkSession ready.")
         return spark
 
-    def run(self) -> None:
+    def execute_pipeline(self) -> None:
         """
         Execute the full BRFSS pipeline from data ingestion to model output.
 
@@ -1188,26 +1191,26 @@ class BRFSSPipeline:
 
         # ── Stage 2: Clean ────────────────────────────────────────────────────
         cleaner = BRFSSCleaner(self.config)
-        df_clean = cleaner.clean(df_raw)
+        df_clean = cleaner.standardize_survey_data(df_raw)
         df_raw.unpersist()
         df_clean.cache()
 
         # ── Stage 3: Feature engineering ──────────────────────────────────────
         engineer = BRFSSEngineer(self.config)
-        df_final = engineer.engineer(df_clean)
+        df_analytic = engineer.build_analytic_features(df_clean)
         df_clean.unpersist()
-        df_final.cache()
+        df_analytic.cache()
 
-        total = df_final.count()
+        total = df_analytic.count()
         self.logger.info("Analytic dataset ready: %d records", total)
 
         # ── Stage 4: EDA ──────────────────────────────────────────────────────
         analyzer = BRFSSAnalyzer(self.config)
-        analyzer.run(df_final)
+        analyzer.compute_descriptive_statistics(df_analytic)
 
         # ── Stage 5: Modelling ────────────────────────────────────────────────
         modeler = BRFSSModeler(self.spark, self.config, outcome_col="flag_diabetes")
-        results = modeler.run(df_final)
+        results = modeler.train_and_evaluate_models(df_analytic)
 
         # ── Stage 6: Export ───────────────────────────────────────────────────
         os.makedirs(self.config.output_dir, exist_ok=True)
@@ -1223,8 +1226,8 @@ class BRFSSPipeline:
             "flag_obese", "flag_poor_sleep", "flag_mental_burden",
             "_LLCPWT",
         ]
-        available_export = [c for c in export_cols if c in df_final.columns]
-        df_final.select(available_export).write.mode("overwrite").parquet(output_path)
+        available_export = [c for c in export_cols if c in df_analytic.columns]
+        df_analytic.select(available_export).write.mode("overwrite").parquet(output_path)
         self.logger.info("Export complete.")
 
         # ── Summary ───────────────────────────────────────────────────────────
@@ -1241,7 +1244,7 @@ class BRFSSPipeline:
         self.logger.info("  Output path    : %s", output_path)
         self.logger.info("=" * 60)
 
-        df_final.unpersist()
+        df_analytic.unpersist()
         self.spark.stop()
 
 
@@ -1256,4 +1259,4 @@ if __name__ == "__main__":
         years=[2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024],
     )
     pipeline = BRFSSPipeline(config=config)
-    pipeline.run()
+    pipeline.execute_pipeline()
