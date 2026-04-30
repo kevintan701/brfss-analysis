@@ -402,7 +402,7 @@ class BRFSSCleaner:
 
         Parameters
         ----------
-        survey_df : DataFrame
+        raw_survey_df : DataFrame
             Raw combined BRFSS DataFrame from BRFSSLoader.
 
         Returns
@@ -597,7 +597,7 @@ class BRFSSEngineer:
 
         Parameters
         ----------
-        feature_df : DataFrame
+        cleaned_survey_df : DataFrame
             Cleaned BRFSS DataFrame from BRFSSCleaner.
 
         Returns
@@ -608,6 +608,7 @@ class BRFSSEngineer:
         """
         self.logger.info("Starting feature engineering ...")
         t0 = time.time()
+        feature_df = cleaned_survey_df  # working copy for chained transformations
 
         # ── Binary outcome flags ─────────────────────────────────────────────
         feature_df = self._make_binary_outcome(feature_df, "DIABETE4",  "flag_diabetes",  [1, 2])
