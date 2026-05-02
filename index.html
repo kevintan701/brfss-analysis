@@ -180,7 +180,7 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
 <div class="metrics">
   <div class="metric"><div class="mlabel">Records analyzed</div><div class="mval"><span class="counter" data-target="3482496" data-format="M">3.5M</span></div><div class="mdesc">8 survey years</div></div>
   <div class="metric"><div class="mlabel">Diabetes prevalence</div><div class="mval"><span class="counter" data-target="14.5" data-suffix="%">14.5%</span></div><div class="mdesc">+1.0pp since 2017</div></div>
-  <div class="metric"><div class="mlabel">Best model AUC</div><div class="mval"><span class="counter" data-target="0.797" data-decimals="3">0.797</span></div><div class="mdesc">Logistic regression</div></div>
+  <div class="metric"><div class="mlabel">Best model AUC</div><div class="mval"><span class="counter" data-target="0.797" data-decimals="3">0.797</span></div><div class="mdesc">Random Forest (PySpark)</div></div>
   <div class="metric"><div class="mlabel">Obesity prevalence</div><div class="mval"><span class="counter" data-target="32.6" data-suffix="%">32.6%</span></div><div class="mdesc">+2.6pp since 2017</div></div>
 </div>
 
@@ -188,8 +188,8 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
 <div class="abstract fade-in">
   <div class="abstract-label">Abstract</div>
   <p><strong>Background:</strong> Chronic diseases including diabetes, obesity, and kidney disease represent a leading burden on the U.S. healthcare system, with lifestyle behaviors serving as primary modifiable risk factors.<sup class="ref">1,2</sup> Multi-year surveillance data at population scale enables detection of trends that cross-sectional studies cannot capture.</p>
-  <p><strong>Methods:</strong> We analyzed 3,482,496 survey records from the CDC Behavioral Risk Factor Surveillance System (BRFSS) 2017–2024 using Apache PySpark distributed computing. Logistic regression and random forest classifiers were trained to predict diabetes risk from lifestyle and demographic features.</p>
-  <p><strong>Results:</strong> Diabetes prevalence increased from 14.2% (2017) to 15.2% (2024); obesity rose from 31.1% to 33.7%. Obese adults showed a 23.5% diabetes rate versus 7.3% in normal-weight adults. A clear lifestyle dose-response was observed: adults with lifestyle score 4/4 showed 6.6% diabetes prevalence vs. 18.6% for score 0/4. Best model AUC = 0.797.</p>
+  <p><strong>Methods:</strong> We analyzed 3,482,496 survey records from the CDC Behavioral Risk Factor Surveillance System (BRFSS) 2017–2024 using Apache PySpark distributed computing for data processing and exploratory analysis. For inference, the analytic dataset was collected to pandas and fitted with statsmodels logistic regression, providing full Wald estimates (OR, SE, 95% CI, p-value) for each predictor. A Random Forest was run in PySpark as a supplementary check on variable importance.</p>
+  <p><strong>Results:</strong> Diabetes prevalence increased from 14.2% (2017) to 15.2% (2024); obesity rose from 31.1% to 33.7%. Obese adults showed a 23.5% diabetes rate versus 7.3% in normal-weight adults. A clear lifestyle dose-response was observed: adults with lifestyle score 4/4 showed 6.6% diabetes prevalence vs. 18.6% for score 0/4. Overall chronic disease prevalence: diabetes 14.5%, hypertension 40.3% (odd years), CKD 4.3%, CHD 5.8%, obesity 32.6%. Logistic regression (N=1,060,916, Pseudo-R²=0.176) identified self-rated health (OR=0.611), coronary heart disease (OR=1.679), obesity (OR=1.466), and age (OR=1.038/year) as the strongest independent predictors. Random Forest AUC = 0.811 (PySpark, N=3.1M).</p>
   <p style="margin:0"><strong>Conclusions:</strong> Physical activity, BMI, and general health self-rating are the strongest modifiable predictors of diabetes risk. These findings support integrated lifestyle screening approaches applicable to large-scale administrative databases such as CMS Medicare claims.</p>
 </div>
 
@@ -249,7 +249,40 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
 <section class="section fade-in" id="s3">
   <span class="sec-num">Section 3</span>
   <h2 class="sec-title">Sample Characteristics</h2>
-  <p>The combined analytic dataset includes 3,482,496 adult respondents across 8 survey years (2017–2024). Mean age was 55.0 years; mean BMI was 28.4 kg/m²; mean nightly sleep was 6.9 hours (years with available data). Annual sample sizes ranged from 401,958 (2020, partially affected by COVID-19 field operations) to 457,670 (2024).</p>
+  <p>The combined analytic dataset includes 3,482,496 adult respondents across 8 survey years (2017–2024). Mean age was 55.0 years; mean BMI was 28.4 kg/m²; mean nightly sleep was 6.9 hours (years with available data); mean physical activity was 483.0 MET-minutes/week; mean poor mental health days were 11.3/month. Annual sample sizes ranged from 401,958 (2020, partially affected by COVID-19 field operations) to 457,670 (2024).</p>
+
+  <div style="overflow-x:auto;margin:1.5rem 0 2.5rem">
+  <div style="font-size:13px;font-weight:500;color:var(--ink);margin-bottom:.4rem">Table 1. Patient characteristics stratified by diabetes status</div>
+  <div style="font-size:12px;color:var(--muted);font-style:italic;margin-bottom:.75rem">Continuous variables: unweighted mean. Binary variables: % positive. HTN available in odd survey years only.</div>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="background:var(--navy)"><th style="color:#fff;padding:8px 12px;text-align:left;font-size:11px">Variable</th><th style="color:#fff;padding:8px 12px;text-align:center;font-size:11px">Diabetic<br>(N=503,595)</th><th style="color:#fff;padding:8px 12px;text-align:center;font-size:11px">No Diabetes<br>(N=2,971,499)</th><th style="color:#fff;padding:8px 12px;text-align:center;font-size:11px">Overall<br>(N=3,482,496)</th></tr></thead>
+    <tbody>
+      <tr style="background:#f5f8fb"><td colspan="4" style="padding:6px 12px;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Continuous variables — mean</td></tr>
+      <tr><td style="padding:7px 12px">Age (years)</td><td style="padding:7px 12px;text-align:center">63.5</td><td style="padding:7px 12px;text-align:center">53.5</td><td style="padding:7px 12px;text-align:center">55.0</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 12px">BMI (kg/m²)</td><td style="padding:7px 12px;text-align:center">31.5</td><td style="padding:7px 12px;text-align:center">27.9</td><td style="padding:7px 12px;text-align:center">28.4</td></tr>
+      <tr><td style="padding:7px 12px">PA (MET-min/week)</td><td style="padding:7px 12px;text-align:center">476.5</td><td style="padding:7px 12px;text-align:center">483.4</td><td style="padding:7px 12px;text-align:center">482.6</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 12px">Sleep duration (hrs/night)</td><td style="padding:7px 12px;text-align:center">6.9</td><td style="padding:7px 12px;text-align:center">6.9</td><td style="padding:7px 12px;text-align:center">6.9</td></tr>
+      <tr><td style="padding:7px 12px">Poor mental health days/month</td><td style="padding:7px 12px;text-align:center">13.4</td><td style="padding:7px 12px;text-align:center">10.9</td><td style="padding:7px 12px;text-align:center">11.3</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 12px">Self-rated health (1=Poor–5=Excellent)</td><td style="padding:7px 12px;text-align:center">2.8</td><td style="padding:7px 12px;text-align:center">3.5</td><td style="padding:7px 12px;text-align:center">3.4</td></tr>
+      <tr style="background:#f5f8fb"><td colspan="4" style="padding:6px 12px;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Binary variables — % positive</td></tr>
+      <tr><td style="padding:7px 12px">Female (%)</td><td style="padding:7px 12px;text-align:center">54.5%</td><td style="padding:7px 12px;text-align:center">53.8%</td><td style="padding:7px 12px;text-align:center">53.9%</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 12px">Any physical activity (%)</td><td style="padding:7px 12px;text-align:center">60.3%</td><td style="padding:7px 12px;text-align:center">76.0%</td><td style="padding:7px 12px;text-align:center">73.7%</td></tr>
+      <tr><td style="padding:7px 12px">Meets CDC PA guidelines (%)</td><td style="padding:7px 12px;text-align:center">97.8%</td><td style="padding:7px 12px;text-align:center">97.4%</td><td style="padding:7px 12px;text-align:center">97.5%</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 12px">Poor sleep — &lt;7 hrs (%)</td><td style="padding:7px 12px;text-align:center">13.4%</td><td style="padding:7px 12px;text-align:center">12.0%</td><td style="padding:7px 12px;text-align:center">12.2%</td></tr>
+      <tr><td style="padding:7px 12px">Obesity — BMI ≥30 (%)</td><td style="padding:7px 12px;text-align:center;color:#c0392b;font-weight:500">47.8%</td><td style="padding:7px 12px;text-align:center">26.4%</td><td style="padding:7px 12px;text-align:center">29.5%</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 12px">Hypertension (%) <span style="font-size:11px;color:var(--muted)">[odd yrs only]</span></td><td style="padding:7px 12px;text-align:center;color:#c0392b;font-weight:500">35.2%</td><td style="padding:7px 12px;text-align:center">17.5%</td><td style="padding:7px 12px;text-align:center">20.1%</td></tr>
+      <tr><td style="padding:7px 12px">Coronary heart disease (%)</td><td style="padding:7px 12px;text-align:center;color:#c0392b;font-weight:500">13.9%</td><td style="padding:7px 12px;text-align:center">4.3%</td><td style="padding:7px 12px;text-align:center">5.7%</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 12px">Mental health burden ≥14 days (%)</td><td style="padding:7px 12px;text-align:center">15.5%</td><td style="padding:7px 12px;text-align:center">11.9%</td><td style="padding:7px 12px;text-align:center">12.4%</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div style="background:#f0f4f8;border-left:3px solid var(--mid);padding:.9rem 1.25rem;margin:-1rem 0 2.5rem;border-radius:0 4px 4px 0;font-size:13.5px;line-height:1.75;color:var(--body)">
+    <strong style="color:var(--navy)">How to read this table.</strong>
+    Each row compares a characteristic between adults who have diabetes (left column) and those who do not (middle column), with the overall sample in the right column.
+    Continuous variables (age, BMI, etc.) show the <em>average</em> value for each group.
+    Binary variables (%) show the <em>proportion</em> of adults with that characteristic.
+    Large differences between the Diabetic and No Diabetes columns highlight which factors are most strongly associated with diabetes — these are the variables that will appear as significant predictors in Table 2.
+  </div>
 
   <div class="chart-section">
     <div class="chart-title">Figure 1. Annual sample size and diabetes prevalence (2017–2024)</div>
@@ -374,41 +407,84 @@ footer{border-top:1px solid var(--rule);padding:2rem 0 1rem;margin-top:4rem;disp
 <!-- S5 -->
 <section class="section fade-in" id="s5">
   <span class="sec-num">Section 5</span>
-  <h2 class="sec-title">Machine Learning: Diabetes Risk Classification</h2>
+  <h2 class="sec-title">Modelling &amp; Inference: Diabetes Risk</h2>
 
-  <h3>5.1 Model performance</h3>
-  <p>Two models were trained on 2,517,825 records (80%) and evaluated on 629,712 records (20%). The training dataset required non-null values for the primary outcome (diabetes) and core demographic features (age, BMI, sex), while allowing optional variables — sleep duration and mental health days — to be missing where not collected, consistent with the rotating-core survey design. This approach preserved approximately 90% of all records for model training, compared to 8% under a complete-case restriction.</p>
+  <h3>5.1 Logistic regression — inference (statsmodels)</h3>
+  <p>The primary analytical goal is inference: understanding the independent association between each predictor and diabetes risk after adjustment. PySpark handles all large-scale data operations (3.5M records across Sections 1–4). For the inference stage, the analytic dataset is collected to pandas and fitted with a statsmodels logistic regression model — producing the full Wald inference table (coefficient, standard error, OR, 95% CI, z-statistic, p-value) equivalent to SAS PROC LOGISTIC output. The complete-case modeling dataset after filtering for non-null values on all 13 inference predictors includes 1,060,916 observations. The model converged by Newton-Raphson MLE (log-likelihood = −360,804; Pseudo-R² = 0.1761).</p>
 
   <div class="chart-section">
     <div class="chart-title">Figure 7. Model comparison — AUC and accuracy</div>
-    <div class="chart-caption">Both models trained on 2.5M records; evaluated on 630K held-out test records.</div>
+    <div class="chart-caption">Logistic regression: statsmodels MLE, N=1,060,916 (complete-case inference subset). Random Forest: PySpark Pipeline, N=3.1M (supplementary).</div>
     <div style="position:relative;width:100%;height:200px">
-      <canvas id="modelChart" role="img" aria-label="Horizontal bar chart comparing AUC and accuracy of logistic regression vs random forest">LR: AUC 0.797, Acc 84.4%. RF: AUC 0.786, Acc 84.4%.</canvas>
+      <canvas id="modelChart" role="img" aria-label="Horizontal bar chart comparing AUC and accuracy of logistic regression vs random forest">RF: AUC 0.811, Acc 84.5%. LR inference model: OR table — see Table 2.</canvas>
     </div>
   </div>
 
-  <h3>5.2 Feature importances</h3>
-  <p>General health self-rating — a single-item 5-point scale (Excellent to Poor) — is by far the strongest predictor (importance 0.348), consistent with published evidence that self-rated health captures latent health status beyond what objective biomarkers alone can explain.<sup class="ref">8</sup> Age and BMI follow, with physical activity (pa_any) and the composite lifestyle score retaining independent predictive value after clinical adjustment.</p>
+  <h3>5.2 Key inference findings (Table 2)</h3>
+  <p>The logistic regression inference table reveals the independent association of each predictor with diabetes after full covariate adjustment (N=1,060,916; Pseudo-R²=0.1761). Results are summarised below:</p>
+  <div style="overflow-x:auto;margin:1rem 0">
+  <div style="font-size:13px;font-weight:500;color:var(--ink);margin-bottom:.3rem">Table 2. Logistic regression estimates — outcome: diabetes (statsmodels Logit, N=1,060,916)</div>
+  <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <thead><tr style="background:var(--navy)">
+      <th style="color:#fff;padding:8px 10px;text-align:left;font-size:11px;min-width:200px">Predictor</th>
+      <th style="color:#fff;padding:8px 10px;text-align:right;font-size:11px">Coeff</th>
+      <th style="color:#fff;padding:8px 10px;text-align:right;font-size:11px">SE</th>
+      <th style="color:#fff;padding:8px 10px;text-align:right;font-size:11px">OR</th>
+      <th style="color:#fff;padding:8px 10px;text-align:center;font-size:11px">95% CI</th>
+      <th style="color:#fff;padding:8px 10px;text-align:right;font-size:11px">p-value</th>
+      <th style="color:#fff;padding:8px 10px;text-align:left;font-size:11px">Interpretation</th>
+    </tr></thead>
+    <tbody>
+      <tr style="background:#f9f9f9"><td style="padding:7px 10px">Self-rated health (per 1-pt ↑)</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">−0.4928</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0033</td><td style="padding:7px 10px;text-align:right;font-weight:500;color:var(--green)">0.6109</td><td style="padding:7px 10px;text-align:center">(0.607, 0.615)</td><td style="padding:7px 10px;text-align:right">&lt;0.001 ***</td><td style="padding:7px 10px">Each 1-pt improvement → <strong>38.9% lower odds</strong></td></tr>
+      <tr><td style="padding:7px 10px">Coronary heart disease</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.5180</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0098</td><td style="padding:7px 10px;text-align:right;font-weight:500;color:var(--red)">1.6787</td><td style="padding:7px 10px;text-align:center">(1.647, 1.711)</td><td style="padding:7px 10px;text-align:right">&lt;0.001 ***</td><td style="padding:7px 10px">CHD → <strong>67.9% higher odds</strong></td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 10px">Obesity (BMI ≥30)</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.3822</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0092</td><td style="padding:7px 10px;text-align:right;font-weight:500;color:var(--red)">1.4656</td><td style="padding:7px 10px;text-align:center">(1.440, 1.492)</td><td style="padding:7px 10px;text-align:right">&lt;0.001 ***</td><td style="padding:7px 10px">Obesity → <strong>46.6% higher odds</strong></td></tr>
+      <tr><td style="padding:7px 10px">BMI (per 1 kg/m²)</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0484</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0006</td><td style="padding:7px 10px;text-align:right;font-weight:500;color:var(--red)">1.0496</td><td style="padding:7px 10px;text-align:center">(1.048, 1.051)</td><td style="padding:7px 10px;text-align:right">&lt;0.001 ***</td><td style="padding:7px 10px">Each 1 kg/m² → <strong>5.0% higher odds</strong></td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 10px">Age (per year)</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0376</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0002</td><td style="padding:7px 10px;text-align:right;font-weight:500;color:var(--red)">1.0384</td><td style="padding:7px 10px;text-align:center">(1.038, 1.039)</td><td style="padding:7px 10px;text-align:right">&lt;0.001 ***</td><td style="padding:7px 10px">Each year older → <strong>3.8% higher odds</strong></td></tr>
+      <tr><td style="padding:7px 10px">Any physical activity</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">−0.1464</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0068</td><td style="padding:7px 10px;text-align:right;font-weight:500;color:var(--green)">0.8638</td><td style="padding:7px 10px;text-align:center">(0.852, 0.875)</td><td style="padding:7px 10px;text-align:right">&lt;0.001 ***</td><td style="padding:7px 10px">Any PA → <strong>13.6% lower odds</strong></td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 10px">Healthy lifestyle score (per pt)</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">−0.0671</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0046</td><td style="padding:7px 10px;text-align:right;font-weight:500;color:var(--green)">0.9351</td><td style="padding:7px 10px;text-align:center">(0.927, 0.944)</td><td style="padding:7px 10px;text-align:right">&lt;0.001 ***</td><td style="padding:7px 10px">Each behavior → <strong>6.5% lower odds</strong></td></tr>
+      <tr><td style="padding:7px 10px">Survey year (since 2017)</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">−0.0059</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0014</td><td style="padding:7px 10px;text-align:right;color:var(--green)">0.9941</td><td style="padding:7px 10px;text-align:center">(0.991, 0.997)</td><td style="padding:7px 10px;text-align:right">&lt;0.001 ***</td><td style="padding:7px 10px">Slight downward trend over time</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 10px">Mental health burden ≥14 days</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0347</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono)">0.0137</td><td style="padding:7px 10px;text-align:right;color:var(--red)">1.0353</td><td style="padding:7px 10px;text-align:center">(1.008, 1.064)</td><td style="padding:7px 10px;text-align:right">0.0114 *</td><td style="padding:7px 10px">Burden flag → <strong>3.5% higher odds</strong></td></tr>
+      <tr><td style="padding:7px 10px;color:var(--muted)">PA volume (log MET-min/wk)</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono);color:var(--muted)">−0.0045</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono);color:var(--muted)">0.0026</td><td style="padding:7px 10px;text-align:right;color:var(--muted)">0.9955</td><td style="padding:7px 10px;text-align:center;color:var(--muted)">(0.991, 1.000)</td><td style="padding:7px 10px;text-align:right;color:var(--muted)">0.0794</td><td style="padding:7px 10px;color:var(--muted)">Not significant (pa_any captures effect)</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 10px;color:var(--muted)">Meets CDC PA guidelines</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono);color:var(--muted)">−0.0054</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono);color:var(--muted)">0.0220</td><td style="padding:7px 10px;text-align:right;color:var(--muted)">0.9946</td><td style="padding:7px 10px;text-align:center;color:var(--muted)">(0.953, 1.038)</td><td style="padding:7px 10px;text-align:right;color:var(--muted)">0.8045</td><td style="padding:7px 10px;color:var(--muted)">Not significant after adjustment</td></tr>
+      <tr><td style="padding:7px 10px;color:var(--muted)">Female sex</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono);color:var(--muted)">−0.0020</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono);color:var(--muted)">0.0063</td><td style="padding:7px 10px;text-align:right;color:var(--muted)">0.9980</td><td style="padding:7px 10px;text-align:center;color:var(--muted)">(0.986, 1.010)</td><td style="padding:7px 10px;text-align:right;color:var(--muted)">0.753 (0.7529)</td><td style="padding:7px 10px;color:var(--muted)">Not significant after adjustment</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:7px 10px;color:var(--muted)">Poor mental health days (cont.)</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono);color:var(--muted)">−0.0006</td><td style="padding:7px 10px;text-align:right;font-family:var(--mono);color:var(--muted)">0.0006</td><td style="padding:7px 10px;text-align:right;color:var(--muted)">0.9994</td><td style="padding:7px 10px;text-align:center;color:var(--muted)">(0.998, 1.001)</td><td style="padding:7px 10px;text-align:right;color:var(--muted)">0.361 (0.3605)</td><td style="padding:7px 10px;color:var(--muted)">Not significant after adjustment</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:12px;color:var(--muted);margin-top:.4rem">Coeff = log-odds coefficient; SE = Wald standard error; OR = exp(Coeff); 95% Wald CI on OR scale. *** p&lt;0.001 &nbsp; * p&lt;0.05. Grayed rows = not significant (p≥0.05). statsmodels Logit, Newton-Raphson MLE, Pseudo-R²=0.1761.</p>
+  <div style="background:#f0f4f8;border-left:3px solid var(--mid);padding:.9rem 1.25rem;margin:.5rem 0 2rem;border-radius:0 4px 4px 0;font-size:13.5px;line-height:1.75;color:var(--body)">
+    <strong style="color:var(--navy)">How to read this table.</strong>
+    This table shows the independent association between each predictor and diabetes risk, after simultaneously adjusting for all other variables in the model.
+    The <strong>Odds Ratio (OR)</strong> is the key number: an OR above 1.0 means the predictor is associated with <em>higher</em> diabetes odds; below 1.0 means <em>lower</em> odds.
+    For example, Self-rated health OR=0.6109 means that adults who rate their health one level higher have 39% lower odds of diabetes — independent of their age, BMI, and other factors.
+    The <strong>95% CI</strong> is a confidence interval: if it does not cross 1.0, the finding is statistically significant.
+    The <strong>Coefficient</strong> is the raw model estimate on the log-odds scale; OR = exp(Coefficient).
+    The <strong>SE (standard error)</strong> measures how precisely the coefficient is estimated — a smaller SE relative to the coefficient means a more reliable estimate.
+    <strong style="color:var(--muted)">Grayed rows</strong> are predictors that were not significant after adjustment — this often means their apparent association in Table 1 was explained by other variables in the model (e.g., the sex difference in diabetes disappears once age and BMI are accounted for).
+  </div>
+
+  <h3>5.3 Random Forest — feature importances (supplementary)</h3>
+  <p>Hypertension and self-rated health emerge as the leading features in the Random Forest (importances 0.233 and 0.221), followed closely by age (0.166) and BMI (0.163). These rankings are broadly consistent with the logistic regression coefficients, corroborating the inferential findings through a non-parametric lens.</p>
 
   <div class="chart-section">
     <div class="chart-title">Figure 8. Random forest feature importances (top 10)</div>
-    <div class="chart-caption">Bar length proportional to mean decrease in node impurity. Color indicates predictor domain.</div>
+    <div class="chart-caption">Random Forest feature importances (mean decrease in node impurity). Color indicates predictor domain. Hypertension available in odd years only — its high importance reflects strong signal when available.</div>
     <div class="chart-legend">
       <div class="legend-item"><div class="legend-swatch" style="background:#c0392b"></div>Clinical / physiological</div>
       <div class="legend-item"><div class="legend-swatch" style="background:#e67e22"></div>Demographic</div>
       <div class="legend-item"><div class="legend-swatch" style="background:#1d9e75"></div>Lifestyle / modifiable</div>
     </div>
     <div class="bar-table" id="featBar">
-      <div class="bar-row"><span class="bar-label">Self-rated health</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="100"></div></div><span class="bar-val">0.3478</span></div>
-      <div class="bar-row"><span class="bar-label">Age</span><div class="bar-bg"><div class="bar-fill" style="background:#e67e22" data-width="54.1"></div></div><span class="bar-val">0.1881</span></div>
-      <div class="bar-row"><span class="bar-label">BMI</span><div class="bar-bg"><div class="bar-fill" style="background:#e67e22" data-width="43.3"></div></div><span class="bar-val">0.1505</span></div>
-      <div class="bar-row"><span class="bar-label">CHD flag</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="40.3"></div></div><span class="bar-val">0.1403</span></div>
-      <div class="bar-row"><span class="bar-label">Obesity flag</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="32.7"></div></div><span class="bar-val">0.1138</span></div>
-      <div class="bar-row"><span class="bar-label">Any PA ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="10.1"></div></div><span class="bar-val">0.0351</span></div>
-      <div class="bar-row"><span class="bar-label">Lifestyle score ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="3.8"></div></div><span class="bar-val">0.0131</span></div>
-      <div class="bar-row"><span class="bar-label">Sleep hours ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="1.2"></div></div><span class="bar-val">0.0043</span></div>
-      <div class="bar-row"><span class="bar-label">Mental health days ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="0.9"></div></div><span class="bar-val">0.0032</span></div>
-      <div class="bar-row"><span class="bar-label">Mental burden flag ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="0.4"></div></div><span class="bar-val">0.0015</span></div>
+      <div class="bar-row"><span class="bar-label">Hypertension</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="100"></div></div><span class="bar-val">0.2327</span></div>
+      <div class="bar-row"><span class="bar-label">Self-rated health</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="95.1"></div></div><span class="bar-val">0.2213</span></div>
+      <div class="bar-row"><span class="bar-label">Age</span><div class="bar-bg"><div class="bar-fill" style="background:#e67e22" data-width="71.2"></div></div><span class="bar-val">0.1657</span></div>
+      <div class="bar-row"><span class="bar-label">BMI</span><div class="bar-bg"><div class="bar-fill" style="background:#e67e22" data-width="69.9"></div></div><span class="bar-val">0.1627</span></div>
+      <div class="bar-row"><span class="bar-label">CHD</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="26.6"></div></div><span class="bar-val">0.0618</span></div>
+      <div class="bar-row"><span class="bar-label">Obesity flag</span><div class="bar-bg"><div class="bar-fill" style="background:#c0392b" data-width="18.0"></div></div><span class="bar-val">0.0419</span></div>
+      <div class="bar-row"><span class="bar-label">PA volume (log) ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="14.4"></div></div><span class="bar-val">0.0336</span></div>
+      <div class="bar-row"><span class="bar-label">Sleep hours ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="12.3"></div></div><span class="bar-val">0.0286</span></div>
+      <div class="bar-row"><span class="bar-label">Mental health days ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="8.6"></div></div><span class="bar-val">0.0199</span></div>
+      <div class="bar-row"><span class="bar-label">Lifestyle score ★</span><div class="bar-bg"><div class="bar-fill" style="background:#1d9e75" data-width="4.7"></div></div><span class="bar-val">0.0110</span></div>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-top:.5rem">★ = modifiable lifestyle features retaining independent predictive value after demographic and clinical covariate adjustment.</p>
   </div>
@@ -638,7 +714,7 @@ new Chart(document.getElementById('lifestyleDonut'),{
 new Chart(document.getElementById('modelChart'),{
   type:'bar',
   data:{
-    labels:['Logistic Regression','Random Forest'],
+    labels:['Random Forest (PySpark)','LR — see Table 2'],
     datasets:[
       {label:'AUC-ROC',data:[0.797,0.786],backgroundColor:'#2980b9',borderWidth:0,borderRadius:3},
       {label:'Accuracy',data:[0.844,0.844],backgroundColor:'rgba(41,128,185,0.3)',borderWidth:0,borderRadius:3},
