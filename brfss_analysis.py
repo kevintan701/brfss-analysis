@@ -6,7 +6,7 @@
 #
 #  DESCRIPTION:
 #    End-to-end PySpark pipeline for multi-year BRFSS analysis (2017–2024).
-#    Combines 8 years of CDC survey dataß (~3.5M records) to examine trends
+#    Combines 8 years of CDC survey data (~3.5M records) to examine trends
 #    in physical activity, sleep, mental health, and chronic disease risk
 #    across the U.S. adult population.
 #
@@ -21,11 +21,11 @@
 #    BRFSSCleaner     — Missing value handling, type casting, standardization
 #    BRFSSEngineer    — Feature engineering and derived variables
 #    BRFSSAnalyzer    — EDA: descriptive stats, group comparisons, trends
-#    BRFSSModeler     — Logistic regression and random forest (CKD/diabetes risk)
+#    BRFSSModeler     — Inference (statsmodels) + RF feature importance (PySpark)
 #    BRFSSPipeline    — Orchestrator: runs all stages end-to-end
 #
 #  REQUIREMENTS:
-#    pip install pyspark pyreadstat pandas numpy
+#    pip install pyspark pyreadstat pandas numpy statsmodels
 #    Java 17+ required for PySpark
 #
 #  USAGE:
@@ -52,6 +52,8 @@ from pyspark.ml.feature import StandardScaler, VectorAssembler
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType, IntegerType
+
+import statsmodels.api as sm
 
 
 # =============================================================================
@@ -905,45 +907,102 @@ class BRFSSAnalyzer:
 
 class BRFSSModeler:
     """
-    Trains and evaluates machine learning models for chronic disease
-    risk classification using BRFSS lifestyle and demographic features.
+    Inference-focused modelling stage for BRFSS chronic disease analysis.
 
-    Two models are compared:
-    - Logistic Regression (elastic net regularization)
-    - Random Forest (50 estimators)
+    Design rationale
+    ----------------
+    PySpark handles all large-scale data operations in this pipeline
+    (3.5 M records across Sections 1–4). For the modelling stage the
+    analytic dataset — already cleaned, engineered, and filtered to
+    complete cases — is collected to pandas and fitted with statsmodels
+    logistic regression.  This mirrors the SAS PROC LOGISTIC pattern
+    used by KECC: SAS / PySpark for data processing, a dedicated
+    inference engine for coefficient estimation.
 
-    Primary outcome: ``flag_diabetes`` (diabetes diagnosis).
-    The same pipeline can be reused for ``flag_ckd`` or ``flag_htn``
-    by changing ``outcome_col``.
+    statsmodels provides the full Wald inference table (coefficient,
+    standard error, odds ratio, 95 % CI, z-statistic, p-value) that
+    is the standard output for epidemiological regression analysis.
+    Random Forest runs in PySpark as a supplementary non-parametric
+    check on variable importance.
+
+    Outputs
+    -------
+    Two CSV attachments written to ``config.output_dir``:
+
+    * ``table1_patient_characteristics.csv``  — baseline characteristics
+      stratified by diabetes status (N, mean ± SD or %).
+    * ``table2_model_estimates.csv``  — logistic regression inference
+      table (coeff, SE, OR, 95 % CI, p-value) for every predictor.
 
     Parameters
     ----------
     spark : SparkSession
-        Active Spark session.
+        Active Spark session (used for Random Forest stage).
     config : BRFSSConfig
-        Pipeline configuration (provides seed and train_ratio).
+        Pipeline configuration.
     outcome_col : str
-        Binary outcome column to predict (default: 'flag_diabetes').
+        Binary outcome column (default: ``flag_diabetes``).
     """
 
+    # ── Features for statsmodels inference model ────────────────────────────
+    # Only variables available in ALL 8 survey years (2017–2024).
+    # flag_htn (odd years only) and sleep_hrs/flag_poor_sleep (4 of 8 years)
+    # are excluded here — including rotating-core variables causes listwise
+    # deletion to remove ~99% of records, leaving an underpowered and
+    # potentially singular design matrix.
+    # Both variables remain in the Random Forest and EDA (they are valuable
+    # there), but are not suitable for a complete-case inference model.
+    INFERENCE_FEATURE_COLS: List[str] = [
+        # Lifestyle — modifiable (all years)
+        "log_pa_min", "meets_pa_guidelines", "pa_any",
+        "lifestyle_score",
+        # Body composition (all years)
+        "bmi", "flag_obese",
+        # Demographics (all years)
+        "_AGE80", "sex",
+        # Mental health (all years)
+        "mental_hlth_days", "flag_mental_burden",
+        # Clinical comorbidities (all years — CHD available all years)
+        "flag_chd",
+        # Self-rated health (all years)
+        "gen_health",
+        # Survey year trend
+        "years_since_2017",
+    ]
+
+    # ── Features for Random Forest (PySpark) ────────────────────────────────
+    # Includes rotating-core variables; RF handles missing via handleInvalid.
     FEATURE_COLS: List[str] = [
-        # Lifestyle
         "log_pa_min", "meets_pa_guidelines", "pa_any",
         "sleep_hrs", "flag_poor_sleep",
         "lifestyle_score",
-        # Body
         "bmi", "flag_obese",
-        # Demographics
         "_AGE80", "sex",
-        # Mental health
         "mental_hlth_days", "flag_mental_burden",
-        # Comorbidities (use as features when predicting e.g. CKD)
         "flag_htn", "flag_chd",
-        # General health self-rating
         "gen_health",
-        # Trend
         "years_since_2017",
     ]
+
+    # Human-readable labels for Table 1 and Table 2 output
+    FEATURE_LABELS: Dict[str, str] = {
+        "log_pa_min":          "PA volume (log MET-min/wk)",
+        "meets_pa_guidelines": "Meets CDC PA guidelines",
+        "pa_any":              "Any physical activity",
+        "sleep_hrs":           "Sleep duration (hrs/night)",
+        "flag_poor_sleep":     "Poor sleep (<7 hrs)",
+        "lifestyle_score":     "Healthy lifestyle score (0–4)",
+        "bmi":                 "BMI (kg/m²)",
+        "flag_obese":          "Obesity (BMI ≥30)",
+        "_AGE80":              "Age (years)",
+        "sex":                 "Female sex",
+        "mental_hlth_days":    "Poor mental health days",
+        "flag_mental_burden":  "Mental health burden (≥14 days)",
+        "flag_htn":            "Hypertension",
+        "flag_chd":            "Coronary heart disease",
+        "gen_health":          "Self-rated health (1=Poor–5=Excellent)",
+        "years_since_2017":    "Survey year (years since 2017)",
+    }
 
     def __init__(
         self,
@@ -951,135 +1010,402 @@ class BRFSSModeler:
         config: BRFSSConfig,
         outcome_col: str = "flag_diabetes",
     ) -> None:
-        self.spark = spark
-        self.config = config
+        self.spark       = spark
+        self.config      = config
         self.outcome_col = outcome_col
-        self.logger = logging.getLogger("brfss.modeler")
+        self.logger      = logging.getLogger("brfss.modeler")
 
-    def _prepare(self, modeling_df: DataFrame) -> Tuple[DataFrame, DataFrame]:
+    # ──────────────────────────────────────────────────────────────────────────
+    # Table 1: Patient characteristics
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def build_patient_characteristics(
+        self, analytic_df: DataFrame
+    ) -> pd.DataFrame:
         """
-        Filter to complete cases for modelling and split train/test.
+        Compute Table 1: baseline characteristics stratified by diabetes status.
 
-        Drops rows where the outcome or any feature is null.
-        Returns stratified 80/20 train-test split.
+        For continuous variables the table reports the unweighted mean.
+        For binary variables it reports the proportion (%) of positive cases.
+        Missing values are excluded from each variable's calculation
+        independently, so the denominator may vary by row.
 
         Parameters
         ----------
-        modeling_df : DataFrame
+        analytic_df : DataFrame
+            Full engineered BRFSS Spark DataFrame (all years).
 
         Returns
         -------
-        Tuple[DataFrame, DataFrame]
-            (train_df, test_df)
+        pd.DataFrame
+            Tidy table with columns: Variable, Diabetic, No_Diabetes, Overall.
+            Saved to ``table1_patient_characteristics.csv``.
         """
-        available = [c for c in self.FEATURE_COLS if c in modeling_df.columns]
-        keep_cols = available + [self.outcome_col]
+        self.logger.info("Building Table 1: patient characteristics ...")
 
-        required = [self.outcome_col, "bmi", "_AGE80", "sex"]
-        model_input_df = modeling_df.select(keep_cols).dropna(subset=required)
+        groups = {
+            "Diabetic":     analytic_df.filter(F.col(self.outcome_col) == 1),
+            "No_Diabetes":  analytic_df.filter(F.col(self.outcome_col) == 0),
+            "Overall":      analytic_df,
+        }
+        n_counts = {k: v.count() for k, v in groups.items()}
 
-        n_total = model_input_df.count()
         self.logger.info(
-            "Modelling dataset: %d records after dropping nulls (outcome: %s)",
-            n_total, self.outcome_col,
+            "  N — Diabetic: %s | No Diabetes: %s | Overall: %s",
+            f"{n_counts['Diabetic']:,}",
+            f"{n_counts['No_Diabetes']:,}",
+            f"{n_counts['Overall']:,}",
         )
 
-        train_df, test_df = model_input_df.randomSplit(
-            [self.config.train_ratio, 1 - self.config.train_ratio],
-            seed=self.config.seed,
+        # Variables to summarise — (column, label, type)
+        continuous_vars = [
+            ("_AGE80",           "Age (years)"),
+            ("bmi",              "BMI (kg/m²)"),
+            ("pa_min_week",      "PA (MET-min/week)"),
+            ("sleep_hrs",        "Sleep duration (hrs/night)"),
+            ("mental_hlth_days", "Poor mental health days/month"),
+            ("gen_health",       "Self-rated health (1=Poor–5=Excellent)"),
+        ]
+        binary_vars = [
+            ("pa_any",              "Any physical activity (%)"),
+            ("meets_pa_guidelines", "Meets CDC PA guidelines (%)"),
+            ("flag_poor_sleep",     "Poor sleep — <7 hrs (%)"),
+            ("flag_obese",          "Obesity — BMI ≥30 (%)"),
+            ("flag_htn",            "Hypertension (%) [odd yrs only]"),
+            ("flag_chd",            "Coronary heart disease (%)"),
+            ("flag_mental_burden",  "Mental health burden ≥14 days (%)"),
+        ]
+        # sex==2 → Female
+        sex_var = ("sex", "Female (%)", 2)
+
+        rows: List[Dict] = []
+
+        # N row
+        rows.append({
+            "Variable": "N",
+            "Diabetic":    f"{n_counts['Diabetic']:,}",
+            "No_Diabetes": f"{n_counts['No_Diabetes']:,}",
+            "Overall":     f"{n_counts['Overall']:,}",
+        })
+
+        # Continuous
+        for col, label in continuous_vars:
+            if col not in analytic_df.columns:
+                continue
+            row = {"Variable": label}
+            for grp_name, grp_df in groups.items():
+                val = grp_df.agg(F.round(F.mean(col), 1)).collect()[0][0]
+                row[grp_name] = str(val) if val is not None else "—"
+            rows.append(row)
+
+        # Sex
+        col, label, pos_val = sex_var
+        if col in analytic_df.columns:
+            row = {"Variable": label}
+            for grp_name, grp_df in groups.items():
+                n_grp = n_counts[grp_name]
+                n_pos = grp_df.filter(F.col(col) == pos_val).count()
+                row[grp_name] = f"{round(n_pos/n_grp*100, 1)}%" if n_grp > 0 else "—"
+            rows.append(row)
+
+        # Binary
+        for col, label in binary_vars:
+            if col not in analytic_df.columns:
+                continue
+            row = {"Variable": label}
+            for grp_name, grp_df in groups.items():
+                n_grp = n_counts[grp_name]
+                n_pos = grp_df.filter(F.col(col) == 1).count()
+                row[grp_name] = f"{round(n_pos/n_grp*100, 1)}%" if n_grp > 0 else "—"
+            rows.append(row)
+
+        table1 = pd.DataFrame(rows, columns=["Variable", "Diabetic", "No_Diabetes", "Overall"])
+
+        # Log to console in formatted layout
+        self.logger.info("=" * 60)
+        self.logger.info("TABLE 1: Patient Characteristics by Diabetes Status")
+        self.logger.info("=" * 60)
+        self.logger.info(
+            "  %-40s %12s %14s %12s",
+            "Variable", "Diabetic", "No Diabetes", "Overall"
+        )
+        self.logger.info("  " + "-" * 80)
+        for _, r in table1.iterrows():
+            self.logger.info(
+                "  %-40s %12s %14s %12s",
+                r["Variable"], r["Diabetic"], r["No_Diabetes"], r["Overall"]
+            )
+        self.logger.info(
+            "  Note: HTN available in odd survey years only (rotating core)."
+        )
+
+        return table1
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Inference: statsmodels logistic regression
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _collect_modeling_data(self, analytic_df: DataFrame) -> pd.DataFrame:
+        """
+        Collect the modeling subset from Spark to pandas for inference.
+
+        Selects the outcome and all available feature columns, drops rows
+        with missing values in the required core variables (outcome, age,
+        BMI, sex), and returns a pandas DataFrame ready for statsmodels.
+
+        PySpark handles the filtering and projection at scale before the
+        collect — only the modeling-eligible subset is transferred to the
+        driver.
+
+        Parameters
+        ----------
+        analytic_df : DataFrame
+
+        Returns
+        -------
+        pd.DataFrame
+            Complete-case dataset for logistic regression.
+        """
+        available_features = [
+            c for c in self.INFERENCE_FEATURE_COLS if c in analytic_df.columns
+        ]
+        keep_cols = [self.outcome_col] + available_features
+        # Require non-null on outcome and all inference features — these are
+        # all available in every survey year so listwise deletion is minimal.
+        required  = [self.outcome_col] + available_features
+
+        modeling_sdf = (
+            analytic_df
+            .select(keep_cols)
+            .dropna(subset=required)
+        )
+        n_total = modeling_sdf.count()
+        self.logger.info(
+            "Modeling dataset: %s records after core-variable missingness filter",
+            f"{n_total:,}"
+        )
+
+        self.logger.info(
+            "Collecting modeling dataset to pandas for statsmodels inference ..."
+        )
+        modeling_pd = modeling_sdf.toPandas()
+        self.logger.info(
+            "  Collected: %s rows × %s cols", f"{len(modeling_pd):,}", len(modeling_pd.columns)
+        )
+        return modeling_pd, available_features
+
+    def fit_logistic_regression(
+        self, analytic_df: DataFrame
+    ) -> Tuple[object, pd.DataFrame, List[str]]:
+        """
+        Fit a logistic regression model using statsmodels and produce
+        the full Wald inference table.
+
+        statsmodels Logit is used rather than PySpark LogisticRegression
+        because it provides the complete Wald inference output —
+        coefficient, standard error, z-statistic, p-value, and 95 % CI —
+        which is the standard reporting format for epidemiological
+        regression analysis (equivalent to SAS PROC LOGISTIC output).
+
+        PySpark is used upstream for all large-scale data operations;
+        statsmodels is the inference engine on the collected modeling subset.
+
+        Parameters
+        ----------
+        analytic_df : DataFrame
+            Full engineered BRFSS Spark DataFrame.
+
+        Returns
+        -------
+        result : statsmodels.discrete.discrete_model.BinaryResultsWrapper
+            Fitted model object.
+        table2 : pd.DataFrame
+            Table 2 — coefficient estimates with OR, CI, and p-values.
+        feature_names : List[str]
+            Names of features in model order.
+        """
+        modeling_pd, feature_names = self._collect_modeling_data(analytic_df)
+
+        # All rows are already complete-case (dropna applied in _collect_modeling_data)
+        self.logger.info(
+            "Complete-case N for logistic regression: %s", f"{len(modeling_pd):,}"
+        )
+
+        y = modeling_pd[self.outcome_col].astype(float)
+        X = modeling_pd[feature_names].astype(float)
+        X = sm.add_constant(X)   # adds intercept column 'const'
+
+        self.logger.info("Fitting statsmodels Logit (MLE, no regularization) ...")
+        logit_model = sm.Logit(y, X)
+        result = logit_model.fit(
+            maxiter=200,
+            disp=False,        # suppress iteration output
+            method="newton",   # Newton-Raphson, same algorithm as SAS PROC LOGISTIC
         )
         self.logger.info(
-            "Train N = %d | Test N = %d", train_df.count(), test_df.count()
+            "  Converged: %s | Log-likelihood: %.2f | Pseudo-R²: %.4f",
+            result.mle_retvals.get("converged", "?"),
+            result.llf,
+            result.prsquared,
         )
-        return train_df, test_df
+
+        # ── Build Table 2 ─────────────────────────────────────────────────────
+        coefs   = result.params
+        ses     = result.bse
+        zstats  = result.tvalues
+        pvals   = result.pvalues
+        ci      = result.conf_int(alpha=0.05)   # 95 % Wald CI on log-odds scale
+        OR      = np.exp(coefs)
+        ci_or   = np.exp(ci)
+
+        rows = []
+        for var in coefs.index:
+            label = self.FEATURE_LABELS.get(var, var)
+            sig   = (
+                "***" if pvals[var] < 0.001 else
+                "**"  if pvals[var] < 0.01  else
+                "*"   if pvals[var] < 0.05  else ""
+            )
+            rows.append({
+                "Variable":      var,
+                "Label":         label,
+                "Coefficient":   round(coefs[var], 4),
+                "SE":            round(ses[var], 4),
+                "OR":            round(OR[var], 4),
+                "CI_lower":      round(ci_or.loc[var, 0], 4),
+                "CI_upper":      round(ci_or.loc[var, 1], 4),
+                "z":             round(zstats[var], 3),
+                "p_value":       round(pvals[var], 4),
+                "Significance":  sig,
+            })
+
+        table2 = pd.DataFrame(rows)
+
+        # ── Log Table 2 to console ────────────────────────────────────────────
+        self.logger.info("=" * 60)
+        self.logger.info(
+            "TABLE 2: Logistic Regression Estimates — outcome: %s",
+            self.outcome_col
+        )
+        self.logger.info("=" * 60)
+        self.logger.info(
+            "  %-32s %8s %8s %8s %18s %10s",
+            "Variable", "Coeff", "SE", "OR", "95% CI", "p-value"
+        )
+        self.logger.info("  " + "-" * 88)
+
+        for _, r in table2.iterrows():
+            ci_str = f"({r['CI_lower']:.3f}, {r['CI_upper']:.3f})"
+            self.logger.info(
+                "  %-32s %8.4f %8.4f %8.4f %18s %10s %s",
+                r["Label"], r["Coefficient"], r["SE"],
+                r["OR"], ci_str, f"{r['p_value']:.4f}", r["Significance"]
+            )
+            # Interpretation line — mirrors SAS tutorial style
+            if r["Variable"] != "const":
+                direction  = "increases" if r["Coefficient"] > 0 else "decreases"
+                pct_change = abs(r["OR"] - 1) * 100
+                self.logger.info(
+                    "    → 1-unit ↑ in %-28s %s diabetes odds by %.1f%% "
+                    "(OR=%.3f, 95%%CI: %.3f–%.3f, p=%s)",
+                    r["Label"], direction, pct_change,
+                    r["OR"], r["CI_lower"], r["CI_upper"],
+                    "<0.001" if r["p_value"] < 0.001 else f"{r['p_value']:.3f}"
+                )
+
+        self.logger.info("  " + "-" * 88)
+        self.logger.info(
+            "  OR = odds ratio; CI = 95%% Wald confidence interval; "
+            "*** p<0.001  ** p<0.01  * p<0.05"
+        )
+        self.logger.info(
+            "  Model: statsmodels Logit, Newton-Raphson MLE, %s observations",
+            f"{len(modeling_pd):,}"
+        )
+
+        return result, table2, feature_names
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Supplementary: Random Forest (PySpark) — feature importance
+    # ──────────────────────────────────────────────────────────────────────────
 
     def _evaluate(self, preds: DataFrame, model_name: str) -> Dict[str, float]:
         """
-        Compute AUC-ROC and accuracy for a set of model predictions.
+        Compute AUC-ROC and accuracy on PySpark prediction DataFrame.
 
         Parameters
         ----------
         preds : DataFrame
-            DataFrame with columns 'probability', 'prediction', and the
-            outcome column (from model.transform()).
+            Spark DataFrame with ``probability`` and ``prediction`` columns.
         model_name : str
             Label for logging.
 
         Returns
         -------
         Dict[str, float]
-            {'auc': float, 'accuracy': float}
+            ``{'auc': float, 'accuracy': float}``
         """
         auc = BinaryClassificationEvaluator(
             labelCol=self.outcome_col, metricName="areaUnderROC"
         ).evaluate(preds)
-
         acc = MulticlassClassificationEvaluator(
             labelCol=self.outcome_col,
             predictionCol="prediction",
             metricName="accuracy",
         ).evaluate(preds)
-
         self.logger.info(
             "%s — AUC: %.4f | Accuracy: %.4f", model_name, auc, acc
         )
         return {"auc": auc, "accuracy": acc}
 
-    def train_and_evaluate_models(self, analytic_df: DataFrame) -> Dict[str, Dict[str, float]]:
+    def fit_random_forest(
+        self, analytic_df: DataFrame
+    ) -> Dict[str, float]:
         """
-        Train logistic regression and random forest, evaluate both models,
-        and log feature importances for the random forest.
+        Fit a Random Forest classifier in PySpark (supplementary).
+
+        Provides a non-parametric, non-linear benchmark for comparison with
+        the logistic regression, and outputs ranked feature importances to
+        corroborate the inferential findings from Table 2.
 
         Parameters
         ----------
         analytic_df : DataFrame
-            Engineered BRFSS DataFrame.
+            Full engineered BRFSS Spark DataFrame.
 
         Returns
         -------
-        Dict[str, Dict[str, float]]
-            Nested dict with model names as keys and metric dicts as values.
-            e.g. {'logistic_regression': {'auc': 0.74, 'accuracy': 0.82}, ...}
+        Dict[str, float]
+            AUC and accuracy on the held-out test set.
         """
-        self.logger.info("=" * 60)
-        self.logger.info(
-            "SECTION 5: ML Modelling — outcome: %s", self.outcome_col
+        self.logger.info("Fitting Random Forest (supplementary, PySpark) ...")
+
+        available_features = [
+            c for c in self.FEATURE_COLS if c in analytic_df.columns
+        ]
+        required = [self.outcome_col, "bmi", "_AGE80", "sex"]
+        modeling_sdf = analytic_df.select(
+            [self.outcome_col] + available_features
+        ).dropna(subset=required)
+
+        train_sdf, test_sdf = modeling_sdf.randomSplit(
+            [self.config.train_ratio, 1 - self.config.train_ratio],
+            seed=self.config.seed,
         )
-        self.logger.info("=" * 60)
+        self.logger.info(
+            "  RF train N = %s | test N = %s",
+            f"{train_sdf.count():,}", f"{test_sdf.count():,}"
+        )
 
-        train_df, test_df = self._prepare(analytic_df)
-
-        available_features = [c for c in self.FEATURE_COLS if c in analytic_df.columns]
-
-        # ── Shared preprocessing stages ──────────────────────────────────────
         assembler = VectorAssembler(
             inputCols=available_features,
             outputCol="features_raw",
             handleInvalid="skip",
         )
         scaler = StandardScaler(
-            inputCol="features_raw",
-            outputCol="features",
-            withMean=True,
-            withStd=True,
+            inputCol="features_raw", outputCol="features",
+            withMean=True, withStd=True,
         )
-
-        # ── Model A: Logistic Regression ─────────────────────────────────────
-        self.logger.info("Training Logistic Regression ...")
-        lr = LogisticRegression(
-            featuresCol="features",
-            labelCol=self.outcome_col,
-            maxIter=100,
-            regParam=0.01,
-            elasticNetParam=0.1,
-        )
-        pipeline_lr = Pipeline(stages=[assembler, scaler, lr])
-        model_lr = pipeline_lr.fit(train_df)
-        preds_lr = model_lr.transform(test_df)
-        metrics_lr = self._evaluate(preds_lr, "Logistic Regression")
-
-        # ── Model B: Random Forest ────────────────────────────────────────────
-        self.logger.info("Training Random Forest ...")
         rf = RandomForestClassifier(
             featuresCol="features",
             labelCol=self.outcome_col,
@@ -1088,38 +1414,74 @@ class BRFSSModeler:
             seed=self.config.seed,
         )
         pipeline_rf = Pipeline(stages=[assembler, scaler, rf])
-        model_rf = pipeline_rf.fit(train_df)
-        preds_rf = model_rf.transform(test_df)
-        metrics_rf = self._evaluate(preds_rf, "Random Forest")
+        model_rf    = pipeline_rf.fit(train_sdf)
+        preds_rf    = model_rf.transform(test_sdf)
+        metrics_rf  = self._evaluate(preds_rf, "Random Forest")
 
-        # ── Feature importances ───────────────────────────────────────────────
-        rf_model = model_rf.stages[-1]
-        importances = rf_model.featureImportances.toArray()
-        feat_imp = sorted(
+        # Feature importances
+        rf_fitted   = model_rf.stages[-1]
+        importances = rf_fitted.featureImportances.toArray()
+        feat_imp    = sorted(
             zip(available_features, importances),
-            key=lambda x: x[1],
-            reverse=True,
+            key=lambda x: x[1], reverse=True
         )
-        self.logger.info("Top 10 Feature Importances (Random Forest):")
+        self.logger.info("RF Feature Importances (top 10):")
         for rank, (feat, imp) in enumerate(feat_imp[:10], 1):
-            bar = "█" * int(imp * 200)
-            self.logger.info("  %2d. %-28s %.4f  %s", rank, feat, imp, bar)
+            label = self.FEATURE_LABELS.get(feat, feat)
+            bar   = "█" * int(imp * 200)
+            self.logger.info(
+                "  %2d. %-38s %.4f  %s", rank, label, imp, bar
+            )
 
-        # ── Model comparison summary ──────────────────────────────────────────
-        self.logger.info("── Model Comparison ──")
-        self.logger.info(
-            "  %-25s AUC=%.4f  Acc=%.4f",
-            "Logistic Regression", metrics_lr["auc"], metrics_lr["accuracy"]
-        )
-        self.logger.info(
-            "  %-25s AUC=%.4f  Acc=%.4f",
-            "Random Forest", metrics_rf["auc"], metrics_rf["accuracy"]
-        )
+        return metrics_rf
 
-        return {
-            "logistic_regression": metrics_lr,
-            "random_forest": metrics_rf,
-        }
+    # ──────────────────────────────────────────────────────────────────────────
+    # Main entry point
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def run_analysis(
+        self, analytic_df: DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, float]]:
+        """
+        Execute the full modelling and inference stage.
+
+        Steps
+        -----
+        1. Build Table 1 (patient characteristics) using PySpark aggregations.
+        2. Collect modeling subset to pandas and fit statsmodels Logit for
+           full Wald inference — produces Table 2.
+        3. Fit Random Forest in PySpark for supplementary feature importance.
+
+        Parameters
+        ----------
+        analytic_df : DataFrame
+            Full engineered BRFSS Spark DataFrame from BRFSSEngineer.
+
+        Returns
+        -------
+        table1 : pd.DataFrame
+        table2 : pd.DataFrame
+        rf_metrics : Dict[str, float]
+        """
+        self.logger.info("=" * 60)
+        self.logger.info(
+            "SECTION 5: Modelling & Inference — outcome: %s",
+            self.outcome_col,
+        )
+        self.logger.info("=" * 60)
+
+        # Step 1 — Table 1
+        table1 = self.build_patient_characteristics(analytic_df)
+
+        # Step 2 — Logistic regression inference (statsmodels)
+        _, table2, _ = self.fit_logistic_regression(analytic_df)
+
+        # Step 3 — Random Forest (PySpark, supplementary)
+        rf_metrics = self.fit_random_forest(analytic_df)
+
+        return table1, table2, rf_metrics
+
+
 
 
 # =============================================================================
@@ -1210,15 +1572,16 @@ class BRFSSPipeline:
         analyzer = BRFSSAnalyzer(self.config)
         analyzer.compute_descriptive_statistics(df_analytic)
 
-        # ── Stage 5: Modelling ────────────────────────────────────────────────
+        # ── Stage 5: Modelling & Inference ───────────────────────────────────
         modeler = BRFSSModeler(self.spark, self.config, outcome_col="flag_diabetes")
-        results = modeler.train_and_evaluate_models(df_analytic)
+        table1, table2, rf_metrics = modeler.run_analysis(df_analytic)
 
         # ── Stage 6: Export ───────────────────────────────────────────────────
         os.makedirs(self.config.output_dir, exist_ok=True)
+
+        # Scored Spark dataset
         output_path = os.path.join(self.config.output_dir, "brfss_scored")
         self.logger.info("Saving scored dataset to: %s", output_path)
-
         export_cols = [
             "survey_year", "_STATE", "sex_label", "age_group", "bmi_cat",
             "bmi", "sleep_hrs", "pa_min_week", "meets_pa_guidelines",
@@ -1230,20 +1593,26 @@ class BRFSSPipeline:
         ]
         available_export = [c for c in export_cols if c in df_analytic.columns]
         df_analytic.select(available_export).write.mode("overwrite").parquet(output_path)
-        self.logger.info("Export complete.")
+
+        # Attachment 1 — Table 1: patient characteristics
+        t1_path = os.path.join(self.config.output_dir, "table1_patient_characteristics.csv")
+        table1.to_csv(t1_path, index=False)
+        self.logger.info("Attachment 1 saved: %s", t1_path)
+
+        # Attachment 2 — Table 2: logistic regression estimates
+        t2_path = os.path.join(self.config.output_dir, "table2_model_estimates.csv")
+        table2.to_csv(t2_path, index=False)
+        self.logger.info("Attachment 2 saved: %s", t2_path)
 
         # ── Summary ───────────────────────────────────────────────────────────
         elapsed = time.time() - start
         self.logger.info("=" * 60)
         self.logger.info("PIPELINE COMPLETE in %.1fs", elapsed)
         self.logger.info("  Total records  : %d", total)
-        self.logger.info(
-            "  LR  AUC        : %.4f", results["logistic_regression"]["auc"]
-        )
-        self.logger.info(
-            "  RF  AUC        : %.4f", results["random_forest"]["auc"]
-        )
+        self.logger.info("  RF  AUC        : %.4f", rf_metrics["auc"])
         self.logger.info("  Output path    : %s", output_path)
+        self.logger.info("  Table 1 (CSV)  : %s", t1_path)
+        self.logger.info("  Table 2 (CSV)  : %s", t2_path)
         self.logger.info("=" * 60)
 
         df_analytic.unpersist()
