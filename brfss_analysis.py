@@ -380,8 +380,6 @@ class BRFSSCleaner:
         DataFrame
             DataFrame with missing codes replaced by null in ``col``.
         """
-        # Determine which missing codes to apply based on observed max value.
-        # We check all three tiers; Spark evaluates lazily so this is safe.
         return survey_df.withColumn(
             col,
             F.when(F.col(col).isin(
@@ -644,8 +642,6 @@ class BRFSSEngineer:
         )
 
         # ── Composite chronic disease burden score (0–4) ─────────────────────
-        # Count of the four major conditions: diabetes, hypertension, CKD, CHD
-        # disease_burden: sum of confirmed conditions.
         # flag_htn is null for even survey years (BRFSS rotating core).
         # We treat null as 0 only for diabetes/CKD/CHD which are available
         # every year. flag_htn is excluded from coalesce so that even-year
@@ -657,7 +653,6 @@ class BRFSSEngineer:
             + F.coalesce(F.col("flag_ckd"),     F.lit(0))
             + F.coalesce(F.col("flag_chd"),     F.lit(0))
         )
-        # flag_htn_available: 1 if HTN data was collected this survey year
         feature_df = feature_df.withColumn(
             "flag_htn_available",
             F.when(F.col("flag_htn").isNotNull(), F.lit(1)).otherwise(F.lit(0))
@@ -805,9 +800,7 @@ class BRFSSAnalyzer:
         )
 
         # ── 4.4 Year-over-year trends in key outcomes ────────────────────────
-        # Note: HTN data only available in odd years (BRFSS rotating core).
-        # Sleep data only available in 2017/2018/2020/2022 (rotating core).
-        # HTN_% shows NULL for even years — this is expected, not a data error.
+        # HTN data only available in odd years; sleep only in 2017/18/20/22 (rotating core).
         self._print_summary_table(
             analytic_df.groupBy("survey_year").agg(
                 F.count("*").alias("N"),
@@ -947,11 +940,9 @@ class BRFSSModeler:
     # ── Features for statsmodels inference model ────────────────────────────
     # Only variables available in ALL 8 survey years (2017–2024).
     # flag_htn (odd years only) and sleep_hrs/flag_poor_sleep (4 of 8 years)
-    # are excluded here — including rotating-core variables causes listwise
+    # are excluded — including rotating-core variables causes listwise
     # deletion to remove ~99% of records, leaving an underpowered and
     # potentially singular design matrix.
-    # Both variables remain in the Random Forest and EDA (they are valuable
-    # there), but are not suitable for a complete-case inference model.
     INFERENCE_FEATURE_COLS: List[str] = [
         # Lifestyle — modifiable (all years)
         "log_pa_min", "meets_pa_guidelines", "pa_any",
@@ -984,7 +975,6 @@ class BRFSSModeler:
         "years_since_2017",
     ]
 
-    # Human-readable labels for Table 1 and Table 2 output
     FEATURE_LABELS: Dict[str, str] = {
         "log_pa_min":          "PA volume (log MET-min/wk)",
         "meets_pa_guidelines": "Meets CDC PA guidelines",
@@ -1080,7 +1070,6 @@ class BRFSSModeler:
 
         rows: List[Dict] = []
 
-        # N row
         rows.append({
             "Variable": "N",
             "Diabetic":    f"{n_counts['Diabetic']:,}",
@@ -1088,7 +1077,6 @@ class BRFSSModeler:
             "Overall":     f"{n_counts['Overall']:,}",
         })
 
-        # Continuous
         for col, label in continuous_vars:
             if col not in analytic_df.columns:
                 continue
@@ -1098,7 +1086,6 @@ class BRFSSModeler:
                 row[grp_name] = str(val) if val is not None else "—"
             rows.append(row)
 
-        # Sex
         col, label, pos_val = sex_var
         if col in analytic_df.columns:
             row = {"Variable": label}
@@ -1108,7 +1095,6 @@ class BRFSSModeler:
                 row[grp_name] = f"{round(n_pos/n_grp*100, 1)}%" if n_grp > 0 else "—"
             rows.append(row)
 
-        # Binary
         for col, label in binary_vars:
             if col not in analytic_df.columns:
                 continue
@@ -1121,7 +1107,6 @@ class BRFSSModeler:
 
         table1 = pd.DataFrame(rows, columns=["Variable", "Diabetic", "No_Diabetes", "Overall"])
 
-        # Log to console in formatted layout
         self.logger.info("=" * 60)
         self.logger.info("TABLE 1: Patient Characteristics by Diabetes Status")
         self.logger.info("=" * 60)
@@ -1226,7 +1211,6 @@ class BRFSSModeler:
         """
         modeling_pd, feature_names = self._collect_modeling_data(analytic_df)
 
-        # All rows are already complete-case (dropna applied in _collect_modeling_data)
         self.logger.info(
             "Complete-case N for logistic regression: %s", f"{len(modeling_pd):,}"
         )
@@ -1301,7 +1285,6 @@ class BRFSSModeler:
                 r["Label"], r["Coefficient"], r["SE"],
                 r["OR"], ci_str, f"{r['p_value']:.4f}", r["Significance"]
             )
-            # Interpretation line — mirrors SAS tutorial style
             if r["Variable"] != "const":
                 direction  = "increases" if r["Coefficient"] > 0 else "decreases"
                 pct_change = abs(r["OR"] - 1) * 100
@@ -1418,7 +1401,6 @@ class BRFSSModeler:
         preds_rf    = model_rf.transform(test_sdf)
         metrics_rf  = self._evaluate(preds_rf, "Random Forest")
 
-        # Feature importances
         rf_fitted   = model_rf.stages[-1]
         importances = rf_fitted.featureImportances.toArray()
         feat_imp    = sorted(
