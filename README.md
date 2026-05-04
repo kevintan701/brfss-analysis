@@ -120,7 +120,7 @@ brfss-analysis/
 └── README.md
 ```
 
-> **Note:** BRFSS XPT files average ~100MB each (~800MB total for all 8 years). Files are not included in this repository due to size — download directly from CDC.
+> **Note:** BRFSS XPT files average ~1000MB each (~8GB total for all 8 years). Files are not included in this repository due to size — download directly from CDC.
 
 ### Run
 
